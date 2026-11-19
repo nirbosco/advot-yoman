@@ -16,7 +16,7 @@
   var S = {
     s: lsGet(LS_S), t: lsGet(LS_T), me: null, posts: [], more: false, day: null,
     urls: {}, open: {}, showAll: {}, expanded: {}, offline: false, loading: false,
-    draft: { text: '', imgs: [], files: [], shareable: false, busy: false, err: '', progress: '' }
+    draft: null, editingC: {}
   };
 
   /* ---------- עזר ---------- */
@@ -45,7 +45,8 @@
     out: '<path d="M14.5 4.5h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-3M10 16.5 5.5 12 10 7.5M5.5 12H15"/>',
     users: '<circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 19.5a6.5 6.5 0 0 1 13 0M16 5.2a3.5 3.5 0 0 1 0 6.6M18 14a6.5 6.5 0 0 1 3.5 5.5"/>',
     left: '<path d="m15 5-7 7 7 7"/>', right: '<path d="m9 5 7 7-7 7"/>',
-    download: '<path d="M12 3.5V15M7.5 10.5 12 15l4.5-4.5M5 20.5h14"/>'
+    download: '<path d="M12 3.5V15M7.5 10.5 12 15l4.5-4.5M5 20.5h14"/>',
+    pen: '<path d="M15.5 4.5l4 4L8.5 19.5H4.5v-4z"/><path d="M13 7l4 4"/>'
   };
   function ic(n, label) { return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[n] + '</svg>' + (label ? '<span class="sr">' + esc(label) + '</span>' : ''); }
 
@@ -231,6 +232,8 @@
       b.onclick = function () { S.day = b.getAttribute('data-day') || null; $$('.day').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); S.posts = []; drawFeed(); loadFeed(); };
     });
     var cur = $('.day[aria-pressed="true"]'); if (cur && cur.scrollIntoView) cur.scrollIntoView({ inline: 'center', block: 'nearest' });
+    if (!S.draft) S.draft = newDraft('new');
+    S.draft.el = $('#composer');
     drawComposer(); drawFeed();
   }
 
@@ -251,7 +254,7 @@
   function refresh() {
     if (!S.me || S.loading || document.hidden) return;
     var typing = $$('.c-new textarea').some(function (t) { return t.value.trim(); }) || (document.activeElement && document.activeElement.closest && document.activeElement.closest('.c-new'));
-    if (typing || S.posts.length > 15) return;
+    if (typing || Object.keys(S.editingC).length || document.querySelector('dialog[open]') || S.posts.length > 15) return;
     rpc('yom_me', { p_s: S.s }).then(function (me) {
       var daysChanged = JSON.stringify(me.days) !== JSON.stringify(S.me.days); S.me = me;
       if (daysChanged) { var y = window.scrollY; renderApp(); window.scrollTo(0, y); }
@@ -267,77 +270,104 @@
     var r = $('[data-act="retry"]', b); if (r) r.onclick = function () { loadFeed(); };
   }
 
-  /* ---------- כתיבת פוסט ---------- */
-  function drawComposer() {
-    var c = $('#composer'); if (!c) return; var d = S.draft;
-    var open = d.text || d.imgs.length || d.files.length;
-    c.className = 'sheet composer' + (open ? ' open' : '');
-    var att = d.imgs.map(function (im, i) {
+  /* ---------- כתיבה ועריכה של פוסט (אותו עורך לשניהם) ---------- */
+  var uidN = 0;
+  function newDraft(mode, post) {
+    var d = { mode: mode, uid: 'e' + (++uidN), text: '', keep: [], imgs: [], files: [], shareable: false, busy: false, err: '', progress: '' };
+    if (post) { d.post = post; d.text = post.body; d.keep = post.media.slice(); d.shareable = post.shareable; }
+    return d;
+  }
+  function hasContent(d) { return !!(d.text.trim() || d.keep.length || d.imgs.length || d.files.length); }
+  // בעריכה: האם משהו השתנה לעומת הפוסט השמור
+  function dirty(d) {
+    if (d.mode !== 'edit') return hasContent(d);
+    var ids = d.keep.map(function (m) { return m.id; }).join(','), was = d.post.media.map(function (m) { return m.id; }).join(',');
+    return d.text.trim() !== d.post.body.trim() || d.shareable !== d.post.shareable || ids !== was || d.imgs.length > 0 || d.files.length > 0;
+  }
+  function canSave(d) { return !d.busy && hasContent(d) && d.imgs.every(function (x) { return x.ready; }) && (d.mode !== 'edit' || dirty(d)); }
+  function imgCount(d) { return d.imgs.length + d.keep.filter(function (m) { return m.kind === 'image'; }).length; }
+  function drawComposer() { if (S.draft.el) drawEditor(S.draft); }
+
+  function drawEditor(d) {
+    var c = d.el; if (!c) return;
+    var edit = d.mode === 'edit', open = edit || hasContent(d);
+    c.className = (edit ? 'ed-host composer editing' : 'sheet composer') + (open ? ' open' : '');
+    var dis = d.busy ? ' disabled' : '';
+    var att = d.keep.map(function (m, i) {
+      if (m.kind === 'image') {
+        return '<div class="att-img"><img data-path="' + esc(m.thumb || m.path) + '" alt=""><button class="x" data-rm-keep="' + i + '" aria-label="הסרת התמונה"' + dis + '>' + ic('close') + '</button></div>';
+      }
+      return '<div class="att-file">' + ic('file') + '<span><bdi>' + esc(m.name) + '</bdi> <small>' + fmtSize(m.size) + '</small></span><button class="x" data-rm-keep="' + i + '" aria-label="הסרת הקובץ"' + dis + '>' + ic('close') + '</button></div>';
+    }).join('') + d.imgs.map(function (im, i) {
       return '<div class="att-img' + (im.ready ? '' : ' busy') + '">' + (im.preview ? '<img src="' + im.preview + '" alt="">' : '') +
         (im.ready ? '<span class="safe">' + ic('pin') + 'המיקום הוסר</span>' : '') +
-        '<button class="x" data-rm-img="' + i + '" aria-label="הסרת התמונה">' + ic('close') + '</button></div>';
+        '<button class="x" data-rm-img="' + i + '" aria-label="הסרת התמונה"' + dis + '>' + ic('close') + '</button></div>';
     }).join('') + d.files.map(function (f, i) {
-      return '<div class="att-file">' + ic('file') + '<span>' + esc(f.file.name) + ' <small>' + fmtSize(f.file.size) + '</small></span>' +
-        '<button class="x" data-rm-file="' + i + '" aria-label="הסרת הקובץ">' + ic('close') + '</button></div>';
+      return '<div class="att-file">' + ic('file') + '<span><bdi>' + esc(f.file.name) + '</bdi> <small>' + fmtSize(f.file.size) + '</small></span>' +
+        '<button class="x" data-rm-file="' + i + '" aria-label="הסרת הקובץ"' + dis + '>' + ic('close') + '</button></div>';
     }).join('');
-    var can = !d.busy && (d.text.trim() || d.imgs.length || d.files.length) && d.imgs.every(function (x) { return x.ready; });
+    var can = canSave(d);
+    var goLabel = edit ? (d.busy ? 'בשמירה…' : 'שמירה') : (d.busy ? 'מתפרסם…' : 'פרסום');
     c.innerHTML =
-      '<div class="composer-row">' + av(S.me.name) + '<label class="sr" for="txt">טקסט הפוסט</label>' +
-      '<textarea id="txt" rows="1" maxlength="6000" placeholder="מה תרצו לשתף מהיום?"' + (d.busy ? ' disabled' : '') + '>' + esc(d.text) + '</textarea></div>' +
+      '<div class="composer-row">' + (edit ? '' : av(S.me.name)) + '<label class="sr" for="' + d.uid + '">טקסט הפוסט</label>' +
+      '<textarea class="ed-txt" id="' + d.uid + '" rows="1" maxlength="6000" placeholder="' + (edit ? 'טקסט הפוסט' : 'מה תרצו לשתף מהיום?') + '"' + (d.busy ? ' disabled' : '') + '>' + esc(d.text) + '</textarea></div>' +
       (att ? '<div class="att">' + att + '</div>' : '') +
-      (open ? '<label class="share-opt"><input type="checkbox" id="shareable"' + (d.shareable ? ' checked' : '') + '><span>אפשר לשתף את הפוסט הזה מחוץ לקבוצה, אחרי שניר יפתח את השיתוף בסוף המסע</span></label>' : '') +
+      (open ? '<label class="share-opt"><input type="checkbox" class="ed-share"' + (d.shareable ? ' checked' : '') + dis + '><span>אפשר לשתף את הפוסט הזה מחוץ לקבוצה, אחרי שניר יפתח את השיתוף בסוף המסע</span></label>' : '') +
       (d.err ? '<div class="err" role="alert">' + esc(d.err) + '</div>' : '') +
       (d.progress ? '<div class="progress" role="status">' + esc(d.progress) + '</div>' : '') +
       '<div class="tools">' +
-      '<label class="tool">' + ic('image') + 'תמונות<input class="sr" type="file" id="pickImg" accept="image/*" multiple' + (d.busy ? ' disabled' : '') + '></label>' +
-      '<label class="tool">' + ic('clip') + 'קובץ<input class="sr" type="file" id="pickFile" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx" multiple' + (d.busy ? ' disabled' : '') + '></label>' +
-      '<button class="publish" id="pub"' + (can ? '' : ' disabled') + '>' + (d.busy ? 'מתפרסם…' : 'פרסום') + '</button></div>';
-    var t = $('#txt');
+      '<label class="tool">' + ic('image') + 'תמונות<input class="sr ed-img" type="file" accept="image/*" multiple' + (d.busy ? ' disabled' : '') + '></label>' +
+      '<label class="tool">' + ic('clip') + 'קובץ<input class="sr ed-file" type="file" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx" multiple' + (d.busy ? ' disabled' : '') + '></label>' +
+      (edit ? '</div><div class="btns"><button class="btn ed-cancel"' + dis + '>ביטול</button><button class="btn primary ed-go"' + (can ? '' : ' disabled') + '>' + goLabel + '</button></div>'
+            : '<button class="publish ed-go"' + (can ? '' : ' disabled') + '>' + goLabel + '</button></div>');
+    var t = $('.ed-txt', c), go = $('.ed-go', c);
     autosize(t);
     t.oninput = function () {
-      var wasOpen = !!(d.text || d.imgs.length || d.files.length); d.text = t.value; d.err = ''; autosize(t);
-      var isOpen = !!(d.text || d.imgs.length || d.files.length);
-      if (wasOpen !== isOpen) { drawComposer(); var n = $('#txt'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
-      else $('#pub').disabled = !(d.text.trim() || d.imgs.length || d.files.length) || !d.imgs.every(function (x) { return x.ready; });
+      var was = open; d.text = t.value; d.err = ''; autosize(t);
+      if (!edit && was !== hasContent(d)) { drawEditor(d); var n = $('.ed-txt', c); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+      else go.disabled = !canSave(d);
     };
-    var sh = $('#shareable'); if (sh) sh.onchange = function () { d.shareable = sh.checked; };
-    $('#pickImg').onchange = function (e) { addImages(e.target.files); e.target.value = ''; };
-    $('#pickFile').onchange = function (e) { addFiles(e.target.files); e.target.value = ''; };
-    $$('[data-rm-img]', c).forEach(function (b) { b.onclick = function () { var im = d.imgs.splice(+b.getAttribute('data-rm-img'), 1)[0]; if (im && im.preview) URL.revokeObjectURL(im.preview); drawComposer(); }; });
-    $$('[data-rm-file]', c).forEach(function (b) { b.onclick = function () { d.files.splice(+b.getAttribute('data-rm-file'), 1); drawComposer(); }; });
-    $('#pub').onclick = publish;
+    var sh = $('.ed-share', c); if (sh) sh.onchange = function () { d.shareable = sh.checked; go.disabled = !canSave(d); };
+    $('.ed-img', c).onchange = function (e) { addImages(d, e.target.files); e.target.value = ''; };
+    $('.ed-file', c).onchange = function (e) { addFiles(d, e.target.files); e.target.value = ''; };
+    $$('[data-rm-keep]', c).forEach(function (b) { b.onclick = function () { d.keep.splice(+b.getAttribute('data-rm-keep'), 1); drawEditor(d); }; });
+    $$('[data-rm-img]', c).forEach(function (b) { b.onclick = function () { var im = d.imgs.splice(+b.getAttribute('data-rm-img'), 1)[0]; if (im && im.preview) URL.revokeObjectURL(im.preview); drawEditor(d); }; });
+    $$('[data-rm-file]', c).forEach(function (b) { b.onclick = function () { d.files.splice(+b.getAttribute('data-rm-file'), 1); drawEditor(d); }; });
+    go.onclick = function () { submit(d); };
+    var cn = $('.ed-cancel', c); if (cn) cn.onclick = function () { if (d.dlg) d.dlg.close(); };
+    $$('img[data-path]', c).forEach(function (img) { var u = urlOf(img.getAttribute('data-path')); if (u) { img.src = u; img.classList.add('on'); } });
   }
   function autosize(t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, window.innerHeight * 0.5) + 'px'; }
 
-  function addImages(list) {
-    var d = S.draft; d.err = '';
+  function addImages(d, list) {
+    d.err = '';
     var arr = Array.prototype.slice.call(list || []);
-    if (d.imgs.length + arr.length > MAX_IMG) { d.err = 'אפשר עד ' + MAX_IMG + ' תמונות בפוסט אחד.'; arr = arr.slice(0, Math.max(0, MAX_IMG - d.imgs.length)); }
+    if (imgCount(d) + arr.length > MAX_IMG) { d.err = 'אפשר לצרף עד ' + MAX_IMG + ' תמונות לפוסט אחד.'; arr = arr.slice(0, Math.max(0, MAX_IMG - imgCount(d))); }
     var items = arr.map(function (f) { var it = { src: f, ready: false }; d.imgs.push(it); return it; });
-    drawComposer();
+    drawEditor(d);
     // אחת אחרי השנייה, כדי לא להעמיס על הזיכרון של הטלפון
     items.reduce(function (p, it) {
       return p.then(function () {
         return cleanImage(it.src).then(function (r) {
           if (d.imgs.indexOf(it) < 0) return;
           it.full = r.full; it.thumb = r.thumb; it.w = r.w; it.h = r.h; it.ready = true; it.preview = URL.createObjectURL(r.thumb); it.src = null;
-          drawComposer();
+          drawEditor(d);
         }, function () {
           var i = d.imgs.indexOf(it); if (i >= 0) d.imgs.splice(i, 1);
-          d.err = 'אחת התמונות לא נפתחה. נסו לבחור אותה שוב, או לצלם מסך שלה ולהעלות אותו.'; drawComposer();
+          d.err = 'אחת התמונות לא נפתחה. נסו לבחור אותה שוב, או לצלם מסך שלה ולהעלות אותו.'; drawEditor(d);
         });
       });
     }, Promise.resolve());
   }
-  function addFiles(list) {
-    var d = S.draft; d.err = '';
+  function addFiles(d, list) {
+    d.err = '';
     Array.prototype.slice.call(list || []).forEach(function (f) {
       var ext = extOf(f.name);
       if (FILE_EXT.indexOf(ext) < 0) { d.err = 'אפשר לצרף רק PDF, מצגות, מסמכי וורד וגיליונות אקסל.'; return; }
       if (f.size > MAX_FILE_MB * 1048576) { d.err = 'הקובץ ' + f.name + ' גדול מ-' + MAX_FILE_MB + ' MB. אפשר לשמור אותו כ-PDF ולנסות שוב.'; return; }
       d.files.push({ file: f, ext: ext });
     });
-    drawComposer();
+    drawEditor(d);
   }
 
   /* קידוד מחדש בקנבס: הקובץ שיוצא הוא JPEG נקי, בלי מיקום, בלי דגם הטלפון ובלי שעת הצילום המקורית */
@@ -374,13 +404,14 @@
     });
   }
 
-  function publish() {
-    var d = S.draft; if (d.busy) return;
-    d.busy = true; d.err = ''; d.progress = ''; drawComposer();
+  function submit(d) {
+    if (d.busy) return;
+    var edit = d.mode === 'edit';
+    d.busy = true; d.err = ''; d.progress = ''; drawEditor(d);
     var req = [];
     d.imgs.forEach(function () { req.push({ ext: 'jpg' }, { ext: 'jpg' }); });
     d.files.forEach(function (f) { req.push({ ext: f.ext }); });
-    var total = d.imgs.length + d.files.length;
+    var total = d.imgs.length + d.files.length, nImgUp = d.imgs.length * 2;
     var slots = req.length ? media({ action: 'upload', s: S.s, files: req }) : Promise.resolve({ files: [] });
     slots.then(function (j) {
       var up = [], k = 0, mediaList = [];
@@ -394,7 +425,7 @@
         mediaList.push({ kind: 'file', path: a.path, name: f.file.name, size: f.file.size, mime: a.mime });
       });
       var done = 0;
-      if (total) { d.progress = 'מעלים את הקבצים, ' + total + ' בסך הכול'; drawComposer(); }
+      if (total) { d.progress = 'מעלים את הקבצים, ' + total + ' בסך הכול'; drawEditor(d); }
       var seq = up.reduce(function (p, u, i) {
         return p.then(function () {
           return fetch(SB + '/storage/v1/object/upload/sign/yom-media/' + u.slot.path + '?token=' + encodeURIComponent(u.slot.token), {
@@ -402,26 +433,54 @@
           }).then(function (r) {
             if (!r.ok) throw new Error('upload');
             // תמונה נספרת אחרי ששני הגדלים שלה עלו
-            var countNow = (i < d.imgs.length * 2) ? (i % 2 === 1) : true;
-            if (countNow) { done++; d.progress = 'מעלים ' + done + ' מתוך ' + total; var pr = $('.progress'); if (pr) pr.textContent = d.progress; }
+            if (i >= nImgUp || i % 2 === 1) { done++; d.progress = 'מעלים ' + done + ' מתוך ' + total; var pr = $('.progress', d.el); if (pr) pr.textContent = d.progress; }
           });
         });
       }, Promise.resolve());
-      return seq.then(function () { return rpc('yom_post', { p_s: S.s, p_body: d.text, p_media: mediaList, p_shareable: d.shareable }); });
+      return seq.then(function () {
+        if (edit) return rpc('yom_edit_post', { p_s: S.s, p_id: d.post.id, p_body: d.text, p_keep: d.keep.map(function (m) { return m.id; }), p_add: mediaList, p_shareable: d.shareable });
+        return rpc('yom_post', { p_s: S.s, p_body: d.text, p_media: mediaList, p_shareable: d.shareable });
+      });
     }).then(function (post) {
       d.imgs.forEach(function (im) { if (im.preview) URL.revokeObjectURL(im.preview); });
-      S.draft = { text: '', imgs: [], files: [], shareable: false, busy: false, err: '', progress: '' };
+      if (edit) {
+        d.busy = false; if (d.dlg) d.dlg.close();
+        replacePost(post); signVisible(); toast('השינויים נשמרו');
+        return;
+      }
+      S.draft = newDraft('new');
       if (S.me.days.indexOf(post.day) < 0) { S.me.days = S.me.days.concat([post.day]).sort(); }
       if (!S.day || S.day === post.day) S.posts.unshift(post);
       renderAppKeep(); signVisible(); toast('הפוסט פורסם ביומן');
     }).catch(function (e) {
-      if (e.denied) return onDenied();
+      if (e.denied) { if (d.dlg) d.dlg.close(); return onDenied(); }
       d.busy = false; d.progress = '';
-      d.err = e.net || e.message === 'upload' || e.message === 'Failed to fetch' ? 'הפרסום לא הושלם כי החיבור נפל. הטקסט והקבצים נשמרו כאן, ואפשר לנסות שוב.' : 'הפרסום לא הושלם. נסו שוב.';
-      drawComposer();
+      var net = e.net || e.message === 'upload' || e.message === 'Failed to fetch';
+      d.err = edit ? (net ? 'השינויים לא נשמרו כי החיבור נפל. אפשר לנסות שוב.' : 'השינויים לא נשמרו. נסו שוב.')
+                   : (net ? 'הפרסום לא הושלם כי החיבור נפל. הטקסט והקבצים נשמרו כאן, ואפשר לנסות שוב.' : 'הפרסום לא הושלם. נסו שוב.');
+      drawEditor(d);
     });
   }
   function renderAppKeep() { renderApp(); fillImages(); }
+
+  function editPost(p) {
+    var d = newDraft('edit', p);
+    d.dlg = sheet('<h3>עריכת הפוסט</h3><div class="ed-host"></div>', function (dlg) { d.el = $('.ed-host', dlg); });
+    // סגירה בהקשה מחוץ לגיליון או ב-Esc: לא בזמן שמירה, ולא בלי לשאול כשיש שינויים
+    d.dlg.guard = function () {
+      if (d.busy) return true;
+      if (!dirty(d)) return false;
+      confirmSheet('לבטל את השינויים?', 'מה ששיניתם בפוסט לא יישמר.', 'ביטול השינויים', true, function (done) { done(); d.dlg.close(); }, 'המשך עריכה');
+      return true;
+    };
+    drawEditor(d);
+    var paths = p.media.filter(function (m) { return m.kind === 'image'; }).map(function (m) { return m.thumb || m.path; });
+    // ממלאים את התמונות במקום, בלי לבנות את העורך מחדש, כדי לא לאבד את הסמן והמקלדת
+    if (paths.length) needUrls(paths).then(function () {
+      $$('img[data-path]', d.el).forEach(function (img) { var u = urlOf(img.getAttribute('data-path')); if (u && !img.getAttribute('src')) { img.src = u; img.classList.add('on'); } });
+    }).catch(function () {});
+    var t = $('.ed-txt', d.el); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+  }
 
   /* ---------- פיד ---------- */
   function drawFeed(skeleton) {
@@ -449,7 +508,7 @@
     var canMenu = p.mine || S.me.admin;
     var long = p.body.length > 520 || (p.body.match(/\n/g) || []).length > 8;
     var h = '<article class="sheet post" data-id="' + p.id + '"><div class="post-head">' + av(p.author) +
-      '<div class="who"><b>' + esc(p.author) + '</b><time datetime="' + esc(p.at) + '">' + when(p.at) + '</time></div>' +
+      '<div class="who"><b>' + esc(p.author) + '</b><time datetime="' + esc(p.at) + '">' + when(p.at) + (p.edited ? ' · נערך' : '') + '</time></div>' +
       (canMenu ? '<button class="more" data-menu aria-label="אפשרויות לפוסט">' + ic('dots') + '</button>' : '') + '</div>';
     if (p.body) h += '<div class="body' + (long && !S.expanded[p.id] ? ' clip' : '') + '">' + linkify(p.body) + '</div>' + (long && !S.expanded[p.id] ? '<button class="readmore" data-readmore>להמשך הקריאה</button>' : '');
     if (p.mine && p.shareable) h += '<span class="tag-share">' + ic('globe') + 'אישרתם שיתוף אחרי המסע</span>';
@@ -485,8 +544,14 @@
     return '<div class="comments">' +
       (!all ? '<button class="showall" data-showall>הצגת כל ' + list.length + ' התגובות</button>' : '') +
       shown.map(function (c) {
+        if (S.editingC[c.id] != null) {
+          return '<div class="c">' + av(c.author) + '<div class="c-edit"><label class="sr" for="ce' + c.id + '">עריכת התגובה</label>' +
+            '<textarea id="ce' + c.id + '" rows="1" maxlength="2000">' + esc(S.editingC[c.id]) + '</textarea>' +
+            '<div class="c-meta"><button class="c-save" data-savec="' + c.id + '">שמירה</button><button data-cancelc="' + c.id + '">ביטול</button></div></div></div>';
+        }
         return '<div class="c">' + av(c.author) + '<div><div class="c-b"><b>' + esc(c.author) + '</b><p>' + linkify(c.body) + '</p></div>' +
-          '<div class="c-meta"><time datetime="' + esc(c.at) + '">' + when(c.at) + '</time>' +
+          '<div class="c-meta"><time datetime="' + esc(c.at) + '">' + when(c.at) + (c.edited ? ' · נערכה' : '') + '</time>' +
+          (c.mine ? '<button data-editc="' + c.id + '">עריכה</button>' : '') +
           (c.mine || S.me.admin ? '<button data-delc="' + c.id + '">מחיקה</button>' : '') + '</div></div></div>';
       }).join('') +
       '<div class="c-new"><label class="sr" for="c' + p.id + '">תגובה לפוסט של ' + esc(p.author) + '</label><textarea id="c' + p.id + '" rows="1" maxlength="2000" placeholder="כתיבת תגובה"></textarea>' +
@@ -513,7 +578,14 @@
           rpc('yom_like', { p_s: S.s, p_post: p.id, p_on: on }).then(function (np) { replacePost(np); }).catch(function (e) { p.liked = !on; p.likes += on ? -1 : 1; replacePost(p); fail(e); });
         };
       });
-      $$('[data-toggle-c]', el).forEach(function (b) { b.onclick = function () { S.open[p.id] = !S.open[p.id] || !$('.comments', el); replacePost(p, S.open[p.id]); }; });
+      $$('[data-toggle-c]', el).forEach(function (b) {
+        b.onclick = function () {
+          S.open[p.id] = !S.open[p.id] || !$('.comments', el);
+          // סגירת התגובות מבטלת עריכה פתוחה בהן, כדי שהרענון ברקע לא ייתקע
+          if (!S.open[p.id]) p.comments.forEach(function (c) { delete S.editingC[c.id]; });
+          replacePost(p, S.open[p.id]);
+        };
+      });
       var sa = $('[data-showall]', el); if (sa) sa.onclick = function () { S.showAll[p.id] = true; S.open[p.id] = true; replacePost(p); };
       var rm = $('[data-readmore]', el); if (rm) rm.onclick = function () { S.expanded[p.id] = true; replacePost(p); };
       var lk = $('[data-likers]', el); if (lk) lk.onclick = function () { likersSheet(p); };
@@ -522,6 +594,19 @@
       $$('[data-ar]', el).forEach(function (b) { b.style.aspectRatio = b.getAttribute('data-ar'); });
       $$('[data-view]', el).forEach(function (b) { b.onclick = function () { viewer(p, +b.getAttribute('data-view')); }; });
       $$('[data-file]', el).forEach(function (b) { b.onclick = function () { openFile(p.media.filter(function (m) { return m.kind === 'file'; })[+b.getAttribute('data-file')], b); }; });
+      $$('[data-editc]', el).forEach(function (b) {
+        b.onclick = function () { var cid = b.getAttribute('data-editc'); S.editingC[cid] = (p.comments.filter(function (x) { return String(x.id) === cid; })[0] || {}).body || ''; S.open[p.id] = true; replacePost(p); var t = $('#ce' + b.getAttribute('data-editc')); if (t) { autosizeC(t); t.focus(); t.setSelectionRange(t.value.length, t.value.length); } };
+      });
+      $$('[data-cancelc]', el).forEach(function (b) { b.onclick = function () { delete S.editingC[b.getAttribute('data-cancelc')]; replacePost(p); }; });
+      $$('[data-savec]', el).forEach(function (b) {
+        var cid = b.getAttribute('data-savec'), t = $('#ce' + cid);
+        t.oninput = function () { S.editingC[cid] = t.value; b.disabled = !t.value.trim(); autosizeC(t); };
+        b.onclick = function () {
+          var txt = t.value.trim(); if (!txt) return; b.disabled = true; t.disabled = true;
+          rpc('yom_edit_comment', { p_s: S.s, p_id: +cid, p_body: txt }).then(function (np) { delete S.editingC[cid]; replacePost(np); })
+            .catch(function (e) { b.disabled = false; t.disabled = false; fail(e, 'התגובה לא נשמרה. נסו שוב.'); });
+        };
+      });
       $$('[data-delc]', el).forEach(function (b) {
         b.onclick = function () {
           confirmSheet('למחוק את התגובה?', 'התגובה תיעלם מהיומן לכולם.', 'מחיקה', true, function (done) {
@@ -558,12 +643,13 @@
     d.innerHTML = '<div class="in"><div class="grab" aria-hidden="true"></div>' + html + '</div>';
     document.body.appendChild(d);
     d.addEventListener('close', function () { d.remove(); });
-    d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
+    d.addEventListener('click', function (e) { if (e.target === d && !(d.guard && d.guard())) d.close(); });
+    d.addEventListener('cancel', function (e) { if (d.guard && d.guard()) e.preventDefault(); });
     d.showModal(); if (onOpen) onOpen(d);
     return d;
   }
-  function confirmSheet(title, text, okLabel, danger, action) {
-    sheet('<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p><div class="btns"><button class="btn" data-no>ביטול</button><button class="btn ' + (danger ? 'danger' : 'primary') + '" data-ok>' + esc(okLabel) + '</button></div>', function (d) {
+  function confirmSheet(title, text, okLabel, danger, action, noLabel) {
+    sheet('<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p><div class="btns"><button class="btn" data-no>' + esc(noLabel || 'ביטול') + '</button><button class="btn ' + (danger ? 'danger' : 'primary') + '" data-ok>' + esc(okLabel) + '</button></div>', function (d) {
       $('[data-no]', d).onclick = function () { d.close(); };
       var ok = $('[data-ok]', d);
       ok.onclick = function () { ok.disabled = true; $('[data-no]', d).disabled = true; action(function () { if (d.open) d.close(); }); };
@@ -575,9 +661,11 @@
   }
   function postMenu(p) {
     var items = '';
+    if (p.mine) items += '<li><button data-edit>' + ic('pen') + 'עריכת הפוסט</button></li>';
     if (p.mine) items += '<li><button data-sh>' + ic('globe') + (p.shareable ? 'ביטול האישור לשתף אחרי המסע' : 'אישור לשתף את הפוסט אחרי המסע') + '</button></li>';
     items += '<li><button class="danger" data-del>' + ic('trash') + 'מחיקת הפוסט' + (p.mine ? '' : ' (ניהול)') + '</button></li>';
     sheet('<ul class="menu">' + items + '</ul>', function (d) {
+      var ed = $('[data-edit]', d); if (ed) ed.onclick = function () { d.close(); editPost(p); };
       var sh = $('[data-sh]', d);
       if (sh) sh.onclick = function () {
         d.close(); var on = !p.shareable;

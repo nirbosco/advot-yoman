@@ -116,7 +116,8 @@ svg.i{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .file:hover{border-color:var(--blue-line);background:#f8faff}
 .file .ic{width:40px;height:40px;border-radius:10px;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;flex:none}
 .file .nm{flex:1;min-width:0}
-.file .nm b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;text-align:right}
+.file .nm b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:plaintext;text-align:start}
+.att-file bdi{unicode-bidi:isolate}
 .file .nm small{color:var(--ink-3);font-size:13px}
 
 .stats{display:flex;justify-content:space-between;padding:8px 14px 0;font-size:14px;color:var(--ink-3)}
@@ -134,12 +135,14 @@ svg.i{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .comments{border-top:1px solid var(--line);padding:10px 14px 12px;background:#fafafb}
 .c{display:flex;gap:8px;margin-bottom:10px}
 .c .av{width:32px;height:32px;font-size:14px}
-.c-b{background:#eef0f3;border-radius:16px;padding:7px 12px;max-width:calc(100% - 40px)}
+.c > div:last-child{min-width:0;max-width:calc(100% - 40px)}
+.c-b{background:#eef0f3;border-radius:16px;padding:7px 12px;width:fit-content;max-width:100%}
 .c-b b{font-weight:500;font-size:14px;display:block}
 .c-b p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px}
 .c-meta{font-size:13px;color:var(--ink-3);margin:2px 12px 0;display:flex;gap:12px}
 .c-meta button{border:0;background:transparent;color:var(--ink-3);padding:0;font-size:13px;min-height:28px}
-.c-meta button:hover{color:var(--danger)}
+.c-meta button:hover{color:var(--ink)}
+.c-meta [data-delc]:hover{color:var(--danger)}
 .showall{border:0;background:transparent;color:var(--ink-2);font-weight:500;font-size:14px;padding:0 0 10px;min-height:32px}
 .c-new{display:flex;gap:8px;align-items:flex-end}
 .c-new textarea{flex:1;border:1px solid var(--line);background:#fff;border-radius:20px;padding:9px 14px;resize:none;min-height:42px;max-height:140px;font-size:16px;line-height:1.4;outline:none}
@@ -148,6 +151,21 @@ svg.i{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .send:disabled{background:#b9c3dc}
 .send svg.i{transform:scaleX(-1)}
 
+.c-edit{flex:1;min-width:0}
+.c-edit textarea{width:100%;border:1px solid var(--line);background:#eef0f3;border-radius:16px;padding:8px 12px;resize:none;min-height:42px;max-height:140px;font-size:16px;line-height:1.4;outline:none}
+.c-edit textarea:focus{border-color:var(--blue);background:#fff}
+.c-edit .c-meta{gap:4px;margin-inline:4px}
+.c-edit .c-meta button{min-height:44px;padding:0 10px;font-size:15px}
+.c-meta .c-save{color:var(--blue-ink);font-weight:500}
+.c-meta .c-save:hover{color:var(--blue)}
+.c-meta .c-save:disabled{color:var(--ink-3)}
+.c-meta button{min-height:32px}
+/* עריכת פוסט בתוך גיליון */
+.ed-host{margin-top:6px}
+.composer.editing{padding:0}
+.composer.editing .composer-row textarea{border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-height:120px}
+.composer.editing .composer-row textarea:focus{border-color:var(--blue)}
+.composer.editing .btns{margin-top:12px}
 .loadmore{display:block;margin:6px auto 0;border:1px solid var(--line);background:var(--sheet);border-radius:var(--pill);padding:8px 20px;min-height:44px;color:var(--ink-2);font-weight:500}
 .empty{padding:28px 20px;text-align:center;color:var(--ink-2)}
 .empty b{display:block;color:var(--ink);font-size:19px;margin-bottom:6px}
@@ -192,6 +210,7 @@ dialog::backdrop{background:rgba(10,14,30,.5)}
 .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700}
 .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:700}
 .btn:disabled{opacity:.6}
+.btn.primary:disabled{background:var(--blue-soft);border-color:var(--blue-soft);color:var(--ink-3);opacity:1}
 .switch{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:12px;margin:8px 0 14px;cursor:pointer}
 .switch input{width:22px;height:22px;accent-color:var(--blue);flex:none}
 .switch span{flex:1;font-size:15px;color:var(--ink-2)}
