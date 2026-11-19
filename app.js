@@ -52,7 +52,17 @@
 
   function initial(name) { return esc((name || '?').trim().charAt(0)); }
   function avc(name) { var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0; return 'c' + (1 + h % 6); }
-  function av(name) { return '<span class="av ' + avc(name || '') + '" aria-hidden="true">' + initial(name) + '</span>'; }
+  // הדמויות מהמשחק "Mind the Gap" (האיורים של ניר), ושמותיהן כמו בחידון
+  var CHARS = [['adele', 'אדל'], ['austen', 'ג\'יין אוסטן'], ['bean', 'רואן אטקינסון'], ['bond', 'שון קונרי'], ['bowie', 'דייוויד בואי'], ['chaplin', 'צ\'רלי צ\'פלין'],
+    ['charles', 'המלך צ\'ארלס'], ['churchill', 'וינסטון צ\'רצ\'יל'], ['cleese', 'ג\'ון קליז'], ['dench', 'ג\'ודי דנץ\''], ['elton', 'אלטון ג\'ון'], ['hitchcock', 'אלפרד היצ\'קוק'],
+    ['mercury', 'פרדי מרקורי'], ['potter', 'הארי פוטר'], ['queen', 'המלכה אליזבת'], ['smith', 'מגי סמית\''], ['thatcher', 'מרגרט תאצ\'ר'], ['winehouse', 'איימי ווינהאוס']];
+  function avatarOf(name) { return S.me && S.me.avatars ? S.me.avatars[name] || null : null; }
+  function av(name) {
+    var a = avatarOf(name), img = '';
+    if (a && /^q:[a-z]+$/.test(a)) img = '<img src="assets/av/' + a.slice(2) + '.webp" alt="">';
+    else if (a) img = '<img data-path="' + esc(a) + '" alt="">';
+    return '<span class="av ' + avc(name || '') + (a && a.indexOf('q:') === 0 ? ' q' : '') + '" aria-hidden="true">' + initial(name) + img + '</span>';
+  }
 
   function londonParts(d) {
     var o = {}; new Intl.DateTimeFormat('en-GB', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
@@ -128,6 +138,7 @@
   function signVisible() {
     var paths = [];
     S.posts.forEach(function (p) { p.media.forEach(function (m) { if (m.kind === 'image') paths.push(m.thumb || m.path); }); });
+    if (S.me && S.me.avatars) Object.keys(S.me.avatars).forEach(function (n) { var a = S.me.avatars[n]; if (a && a.indexOf('m/') === 0) paths.push(a); });
     if (!paths.length) return;
     needUrls(paths).then(fillImages).catch(function (e) { if (e.denied) onDenied(); });
   }
@@ -152,7 +163,11 @@
   }
   function boot() {
     if (S.s) {
-      rpc('yom_me', { p_s: S.s }).then(function (me) { S.me = me; renderApp(); loadFeed(); })
+      rpc('yom_me', { p_s: S.s }).then(function (me) {
+        S.me = me; renderApp(); loadFeed(); signVisible();
+        // מיד אחרי הכניסה הראשונה מציעים לבחור תמונה. אפשר לדלג
+        if (S.justJoined && !me.avatar) { S.justJoined = false; avatarSheet(true); }
+      })
         .catch(function (e) {
           if (e.denied) { lsDel(LS_S); S.s = null; boot(); return; }
           renderMsg('אין חיבור כרגע', 'היומן ייטען כשתחזור הקליטה.', true);
@@ -198,7 +213,7 @@
       b.onclick = function () {
         var m = roster.filter(function (x) { return String(x.id) === b.getAttribute('data-id'); })[0];
         confirmSheet('להיכנס בתור ' + m.name + '?', 'מעכשיו הפוסטים, התגובות והלייקים מהטלפון הזה יופיעו בשם הזה.', 'כן, זה אני', false, function (done) {
-          rpc('yom_join', { p_t: S.t, p_member: m.id }).then(function (j) { done(); S.s = j.s; lsSet(LS_S, S.s); boot(); })
+          rpc('yom_join', { p_t: S.t, p_member: m.id }).then(function (j) { done(); S.s = j.s; lsSet(LS_S, S.s); S.justJoined = true; boot(); })
             .catch(function (e) {
               done();
               if (e.code === 'taken') { toast('השם הזה כבר נבחר בטלפון אחר.'); loadRoster(); }
@@ -212,7 +227,7 @@
   /* ---------- מסך ראשי ---------- */
   function topBar(withMe) {
     return '<header class="bar"><div class="bar-row"><h1>יומן המשלחת<small>' + ic('lock') + 'סגור למשתתפי המשלחת בלבד</small></h1>' +
-      (withMe ? '<button class="me-btn" id="meBtn" aria-label="התפריט שלי, ' + esc(S.me.name) + '">' + initial(S.me.name) + '</button>'
+      (withMe ? '<button class="me-btn" id="meBtn" aria-label="התפריט שלי, ' + esc(S.me.name) + '">' + av(S.me.name) + '</button>'
               : '<img class="logo" src="assets/advot-logo-white.png" alt="אדוות">') + '</div></header>';
   }
   function dayList() {
@@ -680,11 +695,98 @@
       };
     });
   }
+  /* ---------- תמונת פרופיל: דמות מהמשחק, תמונה אישית, או רק האות ---------- */
+  function squareJpeg(file) {
+    // חיתוך ריבוע ממרכז התמונה וקידוד מחדש: גם כאן לא נשאר מיקום או כל נתון צילום אחר
+    return decode(file).then(function (bm) {
+      var w = bm.width || bm.naturalWidth, h = bm.height || bm.naturalHeight, s = Math.min(w, h), out = Math.min(480, s);
+      if (!s) throw new Error('size');
+      var c = document.createElement('canvas'); c.width = c.height = out;
+      var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, out, out);
+      // בתמונה לאורך הפנים בדרך כלל בחלק העליון, ולכן החיתוך נוטה למעלה
+      x.drawImage(bm, (w - s) / 2, h > w ? (h - s) * 0.25 : (h - s) / 2, s, s, 0, 0, out, out);
+      if (bm.close) bm.close();
+      return new Promise(function (res, rej) { c.toBlob(function (b) { c.width = c.height = 0; b ? res(b) : rej(new Error('blob')); }, 'image/jpeg', 0.85); });
+    });
+  }
+  function applyAvatar(a) {
+    S.me.avatar = a; S.me.avatars = S.me.avatars || {};
+    if (a) S.me.avatars[S.me.name] = a; else delete S.me.avatars[S.me.name];
+    var y = window.scrollY; renderApp(); window.scrollTo(0, y); signVisible();
+  }
+  function avatarSheet(first) {
+    var cur = S.me.avatar || '';
+    var tiles = CHARS.map(function (c) {
+      var v = 'q:' + c[0];
+      return '<li><button class="pick" data-av="' + v + '" aria-pressed="' + (cur === v) + '"><span class="pick-img q"><img src="assets/av/' + c[0] + '.webp" alt="" loading="lazy" decoding="async"></span><span class="pick-nm">' + esc(c[1]) + '</span></button></li>';
+    }).join('');
+    var mine = cur.indexOf('m/') === 0;
+    var d = sheet('<h3>' + (first ? 'רוצים לבחור תמונה?' : 'תמונת פרופיל') + '</h3>' +
+      '<p>התמונה תופיע ליד הפוסטים והתגובות שלכם. בחרו דמות מהמשחק או תמונה שלכם, ואפשר להחליף מתי שרוצים.</p>' +
+      '<div class="pick-own">' +
+      '<label class="btn pick-up">' + ic('image') + 'תמונה שלי<input class="sr" type="file" accept="image/*" data-up></label>' +
+      '<button class="btn" data-none' + (!cur ? ' aria-pressed="true"' : '') + '><span class="av ' + avc(S.me.name) + '" aria-hidden="true">' + initial(S.me.name) + '</span>רק האות</button></div>' +
+      '<div class="pick-prev" hidden><span class="pick-frame"><img alt="התמונה שלכם כפי שתוצג ביומן"></span>' +
+      '<div class="pick-prev-b"><b>כך התמונה תיראה ביומן</b><div class="btns"><label class="btn pick-up">תמונה אחרת<input class="sr" type="file" accept="image/*" data-up></label><button class="btn primary" data-use>שימוש בתמונה</button></div></div></div>' +
+      (mine ? '<p class="pick-cur">' + av(S.me.name) + 'כרגע מוצגת התמונה שלכם</p>' : '') +
+      '<ul class="picks" aria-label="דמויות מהמשחק">' + tiles + '</ul>' +
+      '<div class="pick-foot"><div class="pick-status" role="status"></div><div class="btns"><button class="btn" data-no>' + (first ? 'אחר כך' : 'סגירה') + '</button></div></div>');
+    if (mine) needUrls([cur]).then(function () { $$('img[data-path]', d).forEach(function (i) { i.src = urlOf(i.getAttribute('data-path')); }); }).catch(function () {});
+    var sel = $('.pick[aria-pressed="true"]', d); if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'center' });
+    var status = $('.pick-status', d), prev = $('.pick-prev', d), blob = null, prevUrl = null;
+    function busy(on, msg, btn) {
+      $$('button, input', d).forEach(function (b) { if (!b.hasAttribute('data-no')) b.disabled = on; });
+      $$('[aria-busy]', d).forEach(function (b) { b.setAttribute('aria-busy', 'false'); });
+      if (on && btn) btn.setAttribute('aria-busy', 'true');
+      status.className = 'pick-status'; status.textContent = msg || '';
+    }
+    function err(msg) { busy(false, ''); status.className = 'pick-status err'; status.textContent = msg; }
+    function save(a, okMsg, btn) {
+      busy(true, 'בשמירה…', btn);
+      return rpc('yom_set_avatar', { p_s: S.s, p_avatar: a }).then(function () { if (prevUrl) URL.revokeObjectURL(prevUrl); applyAvatar(a); d.close(); toast(okMsg); })
+        .catch(function (e) {
+          if (e && e.denied) { d.close(); return onDenied(); }
+          err(e && e.net ? 'אין חיבור כרגע. נסו שוב בעוד רגע.' : 'התמונה לא נשמרה. נסו שוב.');
+        });
+    }
+    $('[data-no]', d).onclick = function () { if (prevUrl) URL.revokeObjectURL(prevUrl); d.close(); };
+    $$('[data-av]', d).forEach(function (b) { b.onclick = function () { save(b.getAttribute('data-av'), 'הדמות נבחרה', b); }; });
+    $('[data-none]', d).onclick = function () { save(null, 'מעכשיו תוצג רק האות הראשונה של השם', this); };
+    // תמונה אישית: קודם תצוגה מקדימה של החיתוך, ורק אחרי אישור היא עולה ומוצגת לכולם
+    $$('[data-up]', d).forEach(function (inp) {
+      inp.onchange = function (e) {
+        var f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+        busy(true, 'מכינים את התמונה…');
+        squareJpeg(f).then(function (b) {
+          blob = b; if (prevUrl) URL.revokeObjectURL(prevUrl); prevUrl = URL.createObjectURL(b);
+          $('img', prev).src = prevUrl; prev.hidden = false; busy(false, '');
+          prev.scrollIntoView({ block: 'nearest' }); $('[data-use]', d).focus();
+        }).catch(function () { err('התמונה הזו לא נפתחה. נסו תמונה אחרת.'); });
+      };
+    });
+    $('[data-use]', d).onclick = function () {
+      var btn = this; if (!blob) return;
+      busy(true, 'מעלים את התמונה…', btn);
+      media({ action: 'upload', s: S.s, files: [{ ext: 'jpg' }] }).then(function (j) {
+        var slot = j.files[0];
+        return fetch(SB + '/storage/v1/object/upload/sign/yom-media/' + slot.path + '?token=' + encodeURIComponent(slot.token), {
+          method: 'PUT', headers: { 'Content-Type': 'image/jpeg', 'x-upsert': 'false' }, body: blob
+        }).then(function (r) { if (!r.ok) throw new Error('upload'); return slot.path; });
+      }).then(function (path) { return save(path, 'התמונה שלכם נשמרה', btn); })
+        .catch(function (e) {
+          if (e && e.denied) { d.close(); return onDenied(); }
+          err('ההעלאה לא הצליחה. בדקו את החיבור ונסו שוב.');
+        });
+    };
+  }
+
   function meMenu() {
-    var items = (S.me.admin ? '<li><button data-admin>' + ic('users') + 'ניהול היומן</button></li>' : '') +
+    var items = '<li><button data-avatar>' + ic('image') + 'תמונת פרופיל</button></li>' +
+      (S.me.admin ? '<li><button data-admin>' + ic('users') + 'ניהול היומן</button></li>' : '') +
       '<li><button data-out>' + ic('out') + 'יציאה מהיומן בטלפון הזה</button></li>';
     sheet('<h3>' + esc(S.me.name) + '</h3><p>אתם מחוברים ליומן בטלפון הזה.</p><ul class="menu">' + items + '</ul>', function (d) {
       var a = $('[data-admin]', d); if (a) a.onclick = function () { d.close(); adminSheet(); };
+      $('[data-avatar]', d).onclick = function () { d.close(); avatarSheet(false); };
       $('[data-out]', d).onclick = function () {
         d.close();
         confirmSheet('לצאת מהיומן בטלפון הזה?', 'השם שלכם ישתחרר, ותוכלו להיכנס שוב מהקישור של המשלחת, מהטלפון הזה או מטלפון אחר. הפוסטים שכתבתם נשארים ביומן.', 'יציאה', false, function (done) {
