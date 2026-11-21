@@ -38,8 +38,18 @@ svg.i{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .me-btn:active{transform:scale(.96)}
 .bar .logo{height:30px;width:auto}
 
+/* ===== מעבר בין היומן למחברת ===== */
+.views{background:var(--blue);padding:0 16px 10px}
+.views-in{display:flex;gap:4px;max-width:640px;margin:0 auto;background:rgba(0,0,0,.18);border-radius:var(--pill);padding:4px}
+.view{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:0;background:transparent;color:#dbe4ff;border-radius:var(--pill);min-height:40px;font-size:15px;font-weight:500;transition:background .18s var(--ease),color .18s var(--ease)}
+.view svg.i{width:18px;height:18px}
+.view[aria-checked="true"]{background:#fff;color:var(--blue-ink);font-weight:700}
+.view:focus-visible{outline-color:#fff}
+.private-note{display:flex;align-items:flex-start;gap:8px;margin:0 4px 12px;font-size:15px;color:var(--ink-2);line-height:1.45}
+.private-note svg.i{width:18px;height:18px;color:var(--blue);margin-top:2px}
+
 /* ===== ימים ===== */
-.days{position:sticky;top:calc(max(10px,env(safe-area-inset-top)) + 68px);z-index:9;background:var(--bg);border-bottom:1px solid var(--line)}
+.days{position:sticky;top:calc(max(10px,env(safe-area-inset-top)) + 58px);z-index:9;background:var(--bg);border-bottom:1px solid var(--line)}
 .days-in{display:flex;gap:8px;overflow-x:auto;max-width:640px;margin:0 auto;padding:10px 16px;scrollbar-width:none}
 .days-in::-webkit-scrollbar{display:none}
 .day{flex:none;border:1px solid var(--line);background:var(--sheet);border-radius:var(--pill);padding:6px 14px;min-height:40px;font-size:15px;color:var(--ink-2);display:flex;align-items:baseline;gap:6px;transition:background .18s var(--ease),color .18s var(--ease),border-color .18s var(--ease)}
@@ -207,7 +217,7 @@ span.av.q{background:var(--blue-soft);color:transparent}
 .composer.editing .composer-row textarea:focus{border-color:var(--blue)}
 .composer.editing .btns{margin-top:12px}
 .loadmore{display:block;margin:6px auto 0;border:1px solid var(--line);background:var(--sheet);border-radius:var(--pill);padding:8px 20px;min-height:44px;color:var(--ink-2);font-weight:500}
-.empty{padding:28px 20px;text-align:center;color:var(--ink-2)}
+.empty{padding:28px 20px;text-align:center;color:var(--ink-2);text-wrap:pretty}
 .empty b{display:block;color:var(--ink);font-size:19px;margin-bottom:6px}
 .skel{height:220px;margin-bottom:14px;background:linear-gradient(90deg,#fff 30%,#f4f5f7 50%,#fff 70%);background-size:300% 100%;animation:sk 1.4s infinite}
 @keyframes sk{from{background-position:100% 0}to{background-position:0 0}}
@@ -287,3 +297,11 @@ dialog::backdrop{background:rgba(10,14,30,.5)}
 }
 @media (max-width:699px){.vnav{display:none}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.act[data-publish] svg.i{transform:scaleX(-1)}
+.menu [data-pub] svg.i{transform:scaleX(-1)}
+/* רשומה במחברת: מנעול במקום תמונת פרופיל, ופס תכלת עדין בראש הכרטיס */
+.note-lock{width:40px;height:40px;border-radius:50%;background:var(--blue-soft);color:var(--blue-ink);display:grid;place-items:center;flex:none}
+.note-lock svg.i{width:20px;height:20px}
+.post.note{border-color:var(--blue-line)}
+.toast{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+.toast-act{border:0;background:transparent;color:#9fb8ff;font-weight:700;min-height:36px;padding:0 4px;text-decoration:underline;text-underline-offset:3px}

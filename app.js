@@ -16,7 +16,8 @@
   var S = {
     s: lsGet(LS_S), t: lsGet(LS_T), me: null, posts: [], more: false, day: null,
     urls: {}, open: {}, showAll: {}, expanded: {}, offline: false, loading: false,
-    draft: null, editingC: {}
+    draft: null, feedDraft: null, noteDraft: null, editingC: {},
+    view: lsGet('yoman-view') === 'notes' ? 'notes' : 'feed'
   };
 
   /* ---------- עזר ---------- */
@@ -88,9 +89,14 @@
     return esc(t).replace(/(https?:\/\/[^\s<]+[^\s<.,:;"')\]])/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + u + '</a>'; });
   }
   var toastT;
-  function toast(msg) {
+  function toast(msg, actLabel, act) {
     var el = $('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
-    el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(function () { el.hidden = true; }, 3200);
+    el.textContent = msg; el.hidden = false; clearTimeout(toastT);
+    if (actLabel) {
+      var b = document.createElement('button'); b.className = 'toast-act'; b.textContent = actLabel;
+      b.onclick = function () { el.hidden = true; act(); }; el.appendChild(b);
+    }
+    toastT = setTimeout(function () { el.hidden = true; }, actLabel ? 6000 : 3200);
   }
 
   /* ---------- שרת ---------- */
@@ -226,7 +232,8 @@
 
   /* ---------- מסך ראשי ---------- */
   function topBar(withMe) {
-    return '<header class="bar"><div class="bar-row"><h1>יומן המשלחת<small>' + ic('lock') + 'סגור למשתתפי המשלחת בלבד</small></h1>' +
+    var sub = withMe && notesView() ? 'המחברת שלי · רק אתם רואים' : 'סגור למשתתפי המשלחת בלבד';
+    return '<header class="bar"><div class="bar-row"><h1>יומן המשלחת<small>' + ic('lock') + sub + '</small></h1>' +
       (withMe ? '<button class="me-btn" id="meBtn" aria-label="התפריט שלי, ' + esc(S.me.name) + '">' + av(S.me.name) + '</button>'
               : '<img class="logo" src="assets/advot-logo-white.png" alt="אדוות">') + '</div></header>';
   }
@@ -234,20 +241,43 @@
     var set = {}; TRIP.forEach(function (d) { set[d] = 1; }); (S.me.days || []).forEach(function (d) { set[d] = 1; });
     return Object.keys(set).sort();
   }
+  function notesView() { return S.view === 'notes'; }
   function renderApp() {
     var have = {}; (S.me.days || []).forEach(function (d) { have[d] = 1; });
-    var days = '<nav class="days" aria-label="סינון לפי יום"><div class="days-in">' +
+    var tabs = '<nav class="views" aria-label="תצוגה"><div class="views-in" role="radiogroup" aria-label="איפה לכתוב">' +
+      '<button class="view" role="radio" data-view="feed" aria-checked="' + !notesView() + '">' + ic('users') + 'היומן של כולם</button>' +
+      '<button class="view" role="radio" data-view="notes" aria-checked="' + notesView() + '">' + ic('lock') + 'המחברת שלי</button></div></nav>';
+    var days = notesView() ? '' : '<nav class="days" aria-label="סינון לפי יום"><div class="days-in">' +
       '<button class="day" data-day="" aria-pressed="' + (!S.day) + '"><b>הכול</b></button>' +
       dayList().map(function (d) {
         return '<button class="day" data-day="' + d + '" aria-pressed="' + (S.day === d) + '"><b>' + dayName(d) + '</b>' + dShort(d) + (have[d] ? '<span class="dot" aria-label="יש פוסטים"></span>' : '') + '</button>';
       }).join('') + '</div></nav>';
-    $app.innerHTML = topBar(true) + days + '<main class="wrap"><div id="banner"></div><section id="composer" class="sheet composer" aria-label="פוסט חדש"></section><div id="feed" aria-live="polite"></div></main>';
+    $app.innerHTML = topBar(true) + tabs + days + '<main class="wrap"><div id="banner"></div>' +
+      (notesView() ? '<p class="private-note">' + ic('lock') + '<span>רק אתם רואים את מה שכתוב כאן, לא שאר חברי המשלחת.</span></p>'
+                   : '<p class="private-note">' + ic('users') + '<span>כל חברי המשלחת יראו את מה שתפרסמו כאן.</span></p>') +
+      '<section id="composer" class="sheet composer" aria-label="' + (notesView() ? 'רשומה חדשה במחברת' : 'פוסט חדש') + '"></section><div id="feed" aria-live="polite"></div></main>';
     $('#meBtn').onclick = meMenu;
+    // מקלדת: חיצים עוברים בין שתי האפשרויות, כמו בקבוצת כפתורי בחירה
+    $$('.view').forEach(function (b) { b.tabIndex = b.getAttribute('aria-checked') === 'true' ? 0 : -1; });
+    $('.views-in').onkeydown = function (e) {
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(e.key) < 0) return;
+      e.preventDefault();
+      var other = $('.view[aria-checked="false"]'); if (other) { other.click(); var n = $('.view[aria-checked="true"]'); if (n) n.focus(); }
+    };
+    $$('.view').forEach(function (b) {
+      b.onclick = function () {
+        var v = b.getAttribute('data-view'); if (v === S.view) return;
+        S.view = v; lsSet('yoman-view', v); S.posts = []; S.more = false; S.loading = false;
+        renderApp(); loadFeed(); window.scrollTo(0, 0);
+      };
+    });
     $$('.day').forEach(function (b) {
       b.onclick = function () { S.day = b.getAttribute('data-day') || null; $$('.day').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); S.posts = []; drawFeed(); loadFeed(); };
     });
     var cur = $('.day[aria-pressed="true"]'); if (cur && cur.scrollIntoView) cur.scrollIntoView({ inline: 'center', block: 'nearest' });
-    if (!S.draft) S.draft = newDraft('new');
+    if (!S.feedDraft) S.feedDraft = newDraft('new');
+    if (!S.noteDraft) { S.noteDraft = newDraft('new'); S.noteDraft.private = true; }
+    S.draft = notesView() ? S.noteDraft : S.feedDraft;
     S.draft.el = $('#composer');
     drawComposer(); drawFeed();
   }
@@ -256,8 +286,11 @@
     if (S.loading) return; S.loading = true;
     var before = append && S.posts.length ? S.posts[S.posts.length - 1].at : null;
     if (!append && !S.posts.length) drawFeed(true);
-    rpc('yom_feed', { p_s: S.s, p_day: S.day, p_before: before }).then(function (j) {
+    var view = S.view;
+    var call = notesView() ? rpc('yom_notes', { p_s: S.s, p_before: before }) : rpc('yom_feed', { p_s: S.s, p_day: S.day, p_before: before });
+    call.then(function (j) {
       S.loading = false; S.offline = false;
+      if (view !== S.view) return; // בינתיים עברו לתצוגה האחרת
       S.posts = append ? S.posts.concat(j.posts) : j.posts; S.more = j.more;
       drawBanner(); drawFeed(); signVisible();
     }).catch(function (e) {
@@ -272,8 +305,8 @@
     if (typing || Object.keys(S.editingC).length || document.querySelector('dialog[open]') || S.posts.length > 15) return;
     rpc('yom_me', { p_s: S.s }).then(function (me) {
       var daysChanged = JSON.stringify(me.days) !== JSON.stringify(S.me.days); S.me = me;
-      if (daysChanged) { var y = window.scrollY; renderApp(); window.scrollTo(0, y); }
-      loadFeed();
+      if (daysChanged && !notesView()) { var y = window.scrollY; renderApp(); window.scrollTo(0, y); }
+      if (!notesView()) loadFeed(); // המחברת משתנה רק מהטלפון הזה, אין מה לרענן
     }).catch(function (e) { if (e.denied) onDenied(); });
   }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
@@ -322,12 +355,13 @@
         '<button class="x" data-rm-file="' + i + '" aria-label="הסרת הקובץ"' + dis + '>' + ic('close') + '</button></div>';
     }).join('');
     var can = canSave(d);
-    var goLabel = edit ? (d.busy ? 'בשמירה…' : 'שמירה') : (d.busy ? 'מתפרסם…' : 'פרסום');
+    var priv = d.private || (edit && d.post.private);
+    var goLabel = (edit || priv) ? (d.busy ? 'בשמירה…' : 'שמירה') : (d.busy ? 'מתפרסם…' : 'פרסום');
     c.innerHTML =
-      '<div class="composer-row">' + (edit ? '' : av(S.me.name)) + '<label class="sr" for="' + d.uid + '">טקסט הפוסט</label>' +
-      '<textarea class="ed-txt" id="' + d.uid + '" rows="1" maxlength="6000" placeholder="' + (edit ? 'טקסט הפוסט' : 'מה תרצו לשתף מהיום?') + '"' + (d.busy ? ' disabled' : '') + '>' + esc(d.text) + '</textarea></div>' +
+      '<div class="composer-row">' + (edit ? '' : av(S.me.name)) + '<label class="sr" for="' + d.uid + '">' + (priv ? 'טקסט הרשומה' : 'טקסט הפוסט') + '</label>' +
+      '<textarea class="ed-txt" id="' + d.uid + '" rows="1" maxlength="6000" placeholder="' + (edit ? (priv ? 'טקסט הרשומה' : 'טקסט הפוסט') : (priv ? 'מה תרצו לרשום לעצמכם?' : 'מה תרצו לשתף מהיום?')) + '"' + (d.busy ? ' disabled' : '') + '>' + esc(d.text) + '</textarea></div>' +
       (att ? '<div class="att">' + att + '</div>' : '') +
-      (open ? '<label class="share-opt"><input type="checkbox" class="ed-share"' + (d.shareable ? ' checked' : '') + dis + '><span>אפשר לשתף את הפוסט הזה מחוץ לקבוצה, אחרי שניר יפתח את השיתוף בסוף המסע</span></label>' : '') +
+      (open && !priv ? '<label class="share-opt"><input type="checkbox" class="ed-share"' + (d.shareable ? ' checked' : '') + dis + '><span>אפשר לשתף את הפוסט הזה מחוץ לקבוצה, אחרי שניר יפתח את השיתוף בסוף המסע</span></label>' : '') +
       (d.err ? '<div class="err" role="alert">' + esc(d.err) + '</div>' : '') +
       (d.progress ? '<div class="progress" role="status">' + esc(d.progress) + '</div>' : '') +
       '<div class="tools">' +
@@ -357,7 +391,7 @@
   function addImages(d, list) {
     d.err = '';
     var arr = Array.prototype.slice.call(list || []);
-    if (imgCount(d) + arr.length > MAX_IMG) { d.err = 'אפשר לצרף עד ' + MAX_IMG + ' תמונות לפוסט אחד.'; arr = arr.slice(0, Math.max(0, MAX_IMG - imgCount(d))); }
+    if (imgCount(d) + arr.length > MAX_IMG) { d.err = 'אפשר לצרף עד ' + MAX_IMG + ' תמונות ' + (d.private || (d.post && d.post.private) ? 'לרשומה אחת.' : 'לפוסט אחד.'); arr = arr.slice(0, Math.max(0, MAX_IMG - imgCount(d))); }
     var items = arr.map(function (f) { var it = { src: f, ready: false }; d.imgs.push(it); return it; });
     drawEditor(d);
     // אחת אחרי השנייה, כדי לא להעמיס על הזיכרון של הטלפון
@@ -454,7 +488,7 @@
       }, Promise.resolve());
       return seq.then(function () {
         if (edit) return rpc('yom_edit_post', { p_s: S.s, p_id: d.post.id, p_body: d.text, p_keep: d.keep.map(function (m) { return m.id; }), p_add: mediaList, p_shareable: d.shareable });
-        return rpc('yom_post', { p_s: S.s, p_body: d.text, p_media: mediaList, p_shareable: d.shareable });
+        return rpc('yom_post', { p_s: S.s, p_body: d.text, p_media: mediaList, p_shareable: !d.private && d.shareable, p_private: !!d.private });
       });
     }).then(function (post) {
       d.imgs.forEach(function (im) { if (im.preview) URL.revokeObjectURL(im.preview); });
@@ -463,15 +497,22 @@
         replacePost(post); signVisible(); toast('השינויים נשמרו');
         return;
       }
-      S.draft = newDraft('new');
+      if (d.private) {
+        S.noteDraft = newDraft('new'); S.noteDraft.private = true;
+        if (notesView()) S.posts.unshift(post);
+        renderAppKeep(); signVisible(); toast('הרשומה נשמרה במחברת שלכם');
+        return;
+      }
+      S.feedDraft = newDraft('new');
       if (S.me.days.indexOf(post.day) < 0) { S.me.days = S.me.days.concat([post.day]).sort(); }
-      if (!S.day || S.day === post.day) S.posts.unshift(post);
+      if (!notesView() && (!S.day || S.day === post.day)) S.posts.unshift(post);
       renderAppKeep(); signVisible(); toast('הפוסט פורסם ביומן');
     }).catch(function (e) {
       if (e.denied) { if (d.dlg) d.dlg.close(); return onDenied(); }
       d.busy = false; d.progress = '';
       var net = e.net || e.message === 'upload' || e.message === 'Failed to fetch';
       d.err = edit ? (net ? 'השינויים לא נשמרו כי החיבור נפל. אפשר לנסות שוב.' : 'השינויים לא נשמרו. נסו שוב.')
+                   : d.private ? (net ? 'הרשומה לא נשמרה כי החיבור נפל. הטקסט והקבצים נשמרו כאן, ואפשר לנסות שוב.' : 'הרשומה לא נשמרה. נסו שוב.')
                    : (net ? 'הפרסום לא הושלם כי החיבור נפל. הטקסט והקבצים נשמרו כאן, ואפשר לנסות שוב.' : 'הפרסום לא הושלם. נסו שוב.');
       drawEditor(d);
     });
@@ -480,12 +521,12 @@
 
   function editPost(p) {
     var d = newDraft('edit', p);
-    d.dlg = sheet('<h3>עריכת הפוסט</h3><div class="ed-host"></div>', function (dlg) { d.el = $('.ed-host', dlg); });
+    d.dlg = sheet('<h3>' + (p.private ? 'עריכת הרשומה' : 'עריכת הפוסט') + '</h3><div class="ed-host"></div>', function (dlg) { d.el = $('.ed-host', dlg); });
     // סגירה בהקשה מחוץ לגיליון או ב-Esc: לא בזמן שמירה, ולא בלי לשאול כשיש שינויים
     d.dlg.guard = function () {
       if (d.busy) return true;
       if (!dirty(d)) return false;
-      confirmSheet('לבטל את השינויים?', 'מה ששיניתם בפוסט לא יישמר.', 'ביטול השינויים', true, function (done) { done(); d.dlg.close(); }, 'המשך עריכה');
+      confirmSheet('לבטל את השינויים?', p.private ? 'מה ששיניתם ברשומה לא יישמר.' : 'מה ששיניתם בפוסט לא יישמר.', 'ביטול השינויים', true, function (done) { done(); d.dlg.close(); }, 'המשך עריכה');
       return true;
     };
     drawEditor(d);
@@ -501,6 +542,10 @@
   function drawFeed(skeleton) {
     var f = $('#feed'); if (!f) return;
     if (skeleton || (S.loading && !S.posts.length)) { f.innerHTML = '<div class="sheet skel"></div><div class="sheet skel"></div>'; return; }
+    if (!S.posts.length && notesView()) {
+      f.innerHTML = '<div class="sheet empty"><b>המחברת שלכם עוד ריקה</b>זה המקום למחשבות, לשאלות ולרשמים שתרצו לשמור לעצמכם. אם תחליטו לשתף משהו מכאן, אפשר לפרסם אותו ביומן מתי שרוצים.</div>';
+      return;
+    }
     if (!S.posts.length) {
       f.innerHTML = '<div class="sheet empty"><b>' + (S.day ? 'עוד אין פוסטים מיום ' + dayName(S.day) + ' ' + dShort(S.day) : 'היומן עוד ריק') + '</b>' +
         'רק חברי המשלחת יראו את מה שתכתבו כאן. אפשר להתחיל במחשבה קצרה מהיום, בתמונה או במצגת ששווה לשמור.</div>';
@@ -510,9 +555,9 @@
     var last = null;
     f.innerHTML = S.posts.map(function (p) {
       var head = '';
-      if (!S.day && p.day !== last) { head = '<h2 class="dayhead">יום ' + dayName(p.day) + ', ' + dShort(p.day) + '</h2>'; last = p.day; }
+      if ((notesView() || !S.day) && p.day !== last) { head = '<h2 class="dayhead">יום ' + dayName(p.day) + ', ' + dShort(p.day) + '</h2>'; last = p.day; }
       return head + postHtml(p);
-    }).join('') + (S.more ? '<button class="loadmore" id="more">פוסטים קודמים</button>' : '');
+    }).join('') + (S.more ? '<button class="loadmore" id="more">' + (notesView() ? 'רשומות קודמות' : 'פוסטים קודמים') + '</button>' : '');
     var m = $('#more'); if (m) m.onclick = function () { m.disabled = true; m.textContent = 'טוען…'; loadFeed(true); };
     bindPosts(f); fillImages();
   }
@@ -520,11 +565,14 @@
   function postHtml(p) {
     var imgs = p.media.filter(function (m) { return m.kind === 'image'; });
     var files = p.media.filter(function (m) { return m.kind === 'file'; });
-    var canMenu = p.mine || S.me.admin;
+    var canMenu = p.mine || (S.me.admin && !p.private);
     var long = p.body.length > 520 || (p.body.match(/\n/g) || []).length > 8;
-    var h = '<article class="sheet post" data-id="' + p.id + '"><div class="post-head">' + av(p.author) +
-      '<div class="who"><b>' + esc(p.author) + '</b><time datetime="' + esc(p.at) + '">' + when(p.at) + (p.edited ? ' · נערך' : '') + '</time></div>' +
-      (canMenu ? '<button class="more" data-menu aria-label="אפשרויות לפוסט">' + ic('dots') + '</button>' : '') + '</div>';
+    // רשומה במחברת: בלי שם ותמונה (זה תמיד אתם), עם מנעול, כדי שלא תיראה כמו פוסט
+    var head = p.private
+      ? '<span class="note-lock" aria-hidden="true">' + ic('lock') + '</span><div class="who"><b>רק לכם</b><time datetime="' + esc(p.at) + '">' + when(p.at) + (p.edited ? ' · נערכה' : '') + '</time></div>'
+      : av(p.author) + '<div class="who"><b>' + esc(p.author) + '</b><time datetime="' + esc(p.at) + '">' + when(p.at) + (p.edited ? ' · נערך' : '') + '</time></div>';
+    var h = '<article class="sheet post' + (p.private ? ' note' : '') + '" data-id="' + p.id + '"><div class="post-head">' + head +
+      (canMenu ? '<button class="more" data-menu aria-label="' + (p.private ? 'אפשרויות לרשומה' : 'אפשרויות לפוסט') + '">' + ic('dots') + '</button>' : '') + '</div>';
     if (p.body) h += '<div class="body' + (long && !S.expanded[p.id] ? ' clip' : '') + '">' + linkify(p.body) + '</div>' + (long && !S.expanded[p.id] ? '<button class="readmore" data-readmore>להמשך הקריאה</button>' : '');
     if (p.mine && p.shareable) h += '<span class="tag-share">' + ic('globe') + 'אישרתם שיתוף אחרי המסע</span>';
     if (imgs.length) {
@@ -540,6 +588,10 @@
         return '<button class="file" data-file="' + i + '"><span class="ic">' + ic('file') + '</span><span class="nm"><b>' + esc(m.name) + '</b><small>' +
           esc(extOf(m.name).toUpperCase()) + ' · ' + fmtSize(m.size) + '</small></span>' + ic('download') + '</button>';
       }).join('') + '</div>';
+    }
+    if (p.private) {
+      // רשומה במחברת: בלי לייקים ותגובות, רק פרסום ביומן
+      return h + '<div class="acts"><button class="act" data-publish>' + ic('send') + 'פרסום ביומן</button></div></article>';
     }
     var nc = p.comments.length;
     if (p.likes || nc) {
@@ -606,6 +658,7 @@
       var lk = $('[data-likers]', el); if (lk) lk.onclick = function () { likersSheet(p); };
       var mn = $('[data-menu]', el); if (mn) mn.onclick = function () { postMenu(p); };
       var sh = $('[data-share]', el); if (sh) sh.onclick = function () { sharePost(p, sh); };
+      var pub = $('[data-publish]', el); if (pub) pub.onclick = function () { publishNote(p); };
       $$('[data-ar]', el).forEach(function (b) { b.style.aspectRatio = b.getAttribute('data-ar'); });
       $$('[data-view]', el).forEach(function (b) { b.onclick = function () { viewer(p, +b.getAttribute('data-view')); }; });
       $$('[data-file]', el).forEach(function (b) { b.onclick = function () { openFile(p.media.filter(function (m) { return m.kind === 'file'; })[+b.getAttribute('data-file')], b); }; });
@@ -675,12 +728,14 @@
       '</ul><div class="btns"><button class="btn" data-no>סגירה</button></div>', function (d) { $('[data-no]', d).onclick = function () { d.close(); }; });
   }
   function postMenu(p) {
-    var items = '';
-    if (p.mine) items += '<li><button data-edit>' + ic('pen') + 'עריכת הפוסט</button></li>';
-    if (p.mine) items += '<li><button data-sh>' + ic('globe') + (p.shareable ? 'ביטול האישור לשתף אחרי המסע' : 'אישור לשתף את הפוסט אחרי המסע') + '</button></li>';
-    items += '<li><button class="danger" data-del>' + ic('trash') + 'מחיקת הפוסט' + (p.mine ? '' : ' (ניהול)') + '</button></li>';
+    var items = '', noun = p.private ? 'הרשומה' : 'הפוסט';
+    if (p.mine) items += '<li><button data-edit>' + ic('pen') + 'עריכת ' + noun + '</button></li>';
+    if (p.private) items += '<li><button data-pub>' + ic('send') + 'פרסום ביומן</button></li>';
+    if (p.mine && !p.private) items += '<li><button data-sh>' + ic('globe') + (p.shareable ? 'ביטול האישור לשתף אחרי המסע' : 'אישור לשתף את הפוסט אחרי המסע') + '</button></li>';
+    items += '<li><button class="danger" data-del>' + ic('trash') + 'מחיקת ' + noun + (p.mine ? '' : ' (ניהול)') + '</button></li>';
     sheet('<ul class="menu">' + items + '</ul>', function (d) {
       var ed = $('[data-edit]', d); if (ed) ed.onclick = function () { d.close(); editPost(p); };
+      var pb = $('[data-pub]', d); if (pb) pb.onclick = function () { d.close(); publishNote(p); };
       var sh = $('[data-sh]', d);
       if (sh) sh.onclick = function () {
         d.close(); var on = !p.shareable;
@@ -688,12 +743,36 @@
       };
       $('[data-del]', d).onclick = function () {
         d.close();
-        confirmSheet('למחוק את הפוסט?', 'הפוסט, התמונות והתגובות שלו ייעלמו מהיומן לכולם.', 'מחיקה', true, function (done) {
-          rpc('yom_delete_post', { p_s: S.s, p_id: p.id }).then(function () { done(); S.posts = S.posts.filter(function (x) { return x.id !== p.id; }); drawFeed(); toast('הפוסט נמחק'); })
+        confirmSheet(p.private ? 'למחוק את הרשומה?' : 'למחוק את הפוסט?',
+          p.private ? 'הרשומה, התמונות והקבצים שלה יימחקו, ואי אפשר לשחזר אותם.' : 'הפוסט, התמונות והתגובות שלו ייעלמו מהיומן לכולם.', 'מחיקה', true, function (done) {
+          rpc('yom_delete_post', { p_s: S.s, p_id: p.id }).then(function () { done(); S.posts = S.posts.filter(function (x) { return x.id !== p.id; }); drawFeed(); toast(p.private ? 'הרשומה נמחקה' : 'הפוסט נמחק'); })
             .catch(function (e) { done(); fail(e); });
         });
       };
     });
+  }
+  // רשומה מהמחברת עוברת ליומן של כולם, כפוסט חדש מהיום
+  function publishNote(p) {
+    var d = sheet('<h3>לפרסם ביומן?</h3><p>הרשומה תעבור ליומן של כולם, וכל חברי המשלחת יראו אותה. היא תופיע ביומן של היום כפוסט חדש, ולא תישאר במחברת.</p>' +
+      '<label class="share-opt"><input type="checkbox" data-pubshare><span>אפשר לשתף את הפוסט הזה מחוץ לקבוצה, אחרי שניר יפתח את השיתוף בסוף המסע</span></label>' +
+      '<div class="btns"><button class="btn" data-no>ביטול</button><button class="btn primary" data-ok>פרסום ביומן</button></div>', function (dlg) {
+      $('[data-no]', dlg).onclick = function () { dlg.close(); };
+      var ok = $('[data-ok]', dlg);
+      ok.onclick = function () {
+        ok.disabled = true; $('[data-no]', dlg).disabled = true; ok.textContent = 'מתפרסם…';
+        rpc('yom_publish_note', { p_s: S.s, p_id: p.id, p_shareable: $('[data-pubshare]', dlg).checked }).then(function (np) {
+          dlg.close();
+          S.posts = S.posts.filter(function (x) { return x.id !== p.id; });
+          if (S.me.days.indexOf(np.day) < 0) S.me.days = S.me.days.concat([np.day]).sort();
+          drawFeed();
+          toast('הרשומה פורסמה ביומן של כולם', 'לצפייה ביומן', function () {
+            S.view = 'feed'; lsSet('yoman-view', 'feed'); S.day = null; S.posts = []; S.more = false; S.loading = false;
+            renderApp(); loadFeed(); window.scrollTo(0, 0);
+          });
+        }).catch(function (e) { ok.disabled = false; $('[data-no]', dlg).disabled = false; ok.textContent = 'פרסום ביומן'; fail(e, 'הפרסום לא הושלם. נסו שוב.'); });
+      };
+    });
+    return d;
   }
   /* ---------- תמונת פרופיל: דמות מהמשחק, תמונה אישית, או רק האות ---------- */
   function squareJpeg(file) {
@@ -790,7 +869,7 @@
       $('[data-out]', d).onclick = function () {
         d.close();
         confirmSheet('לצאת מהיומן בטלפון הזה?', 'השם שלכם ישתחרר, ותוכלו להיכנס שוב מהקישור של המשלחת, מהטלפון הזה או מטלפון אחר. הפוסטים שכתבתם נשארים ביומן.', 'יציאה', false, function (done) {
-          rpc('yom_logout', { p_s: S.s }).catch(function () {}).then(function () { done(); lsDel(LS_S); S.s = null; S.me = null; S.posts = []; boot(); });
+          rpc('yom_logout', { p_s: S.s }).catch(function () {}).then(function () { done(); lsDel(LS_S); lsDel('yoman-view'); S.s = null; S.me = null; S.posts = []; S.feedDraft = S.noteDraft = S.draft = null; S.view = 'feed'; boot(); });
         });
       };
     });
@@ -830,7 +909,7 @@
   function viewer(p, idx) {
     var imgs = p.media.filter(function (m) { return m.kind === 'image'; });
     var shareOk = S.me.share_open && p.shareable;
-    var d = document.createElement('dialog'); d.className = 'viewer'; d.setAttribute('aria-label', 'תמונות מהפוסט של ' + p.author);
+    var d = document.createElement('dialog'); d.className = 'viewer'; d.setAttribute('aria-label', p.private ? 'תמונות מהרשומה' : 'תמונות מהפוסט של ' + p.author);
     d.innerHTML = '<div class="stage"><img alt=""><span class="loading" hidden>טוען…</span></div>' +
       '<div class="vbar"><button class="vb" data-close aria-label="סגירה">' + ic('close') + '</button><span aria-live="polite"></span>' +
       (shareOk ? '<button class="vb" data-vshare aria-label="שיתוף התמונה">' + ic('share') + '</button>' : '<span class="vspacer"></span>') + '</div>' +
