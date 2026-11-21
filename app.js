@@ -150,12 +150,23 @@
   }
 
   /* ---------- כניסה ---------- */
+  /* הכתובת תמיד נושאת דרך חזרה: לפני בחירת שם הקישור הקבוצתי (#t=), ואחריה מפתח מעבר אישי (?h=).
+     כך מעבר מהדפדפן של ווטסאפ לספארי, או הוספה למסך הבית באייפון, מחזירים אתכם ישר פנימה. */
+  function standalone() { return window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
+  function setUrl(u) { try { history.replaceState(null, '', u); } catch (e) {} }
   function readHash() {
     var h = location.hash, m;
     if ((m = /[#&]t=([A-Za-z0-9]{24,64})/.exec(h))) { S.t = m[1]; lsSet(LS_T, S.t); }
+    var q = /[?&]h=([A-Za-z0-9_-]{24,64})/.exec(location.search);
+    S.h = q ? q[1] : null;
     var a = /[#&]a=([A-Za-z0-9]{16,64})/.exec(h);
-    if (h) history.replaceState(null, '', location.pathname + location.search);
+    if (a) setUrl(location.pathname + location.search); // קוד הניהול לא נשאר בכתובת
     return a ? a[1] : null;
+  }
+  // אחרי כניסה בדפדפן: מפתח מעבר חדש בכתובת. באפליקציה המותקנת מנקים את הכתובת
+  function refreshHandoff() {
+    if (standalone()) { if (location.search || location.hash) setUrl(location.pathname); return; }
+    rpc('yom_handoff_new', { p_s: S.s }).then(function (j) { if (S.s) setUrl(location.pathname + '?h=' + j.h); }).catch(function () {});
   }
 
   function start() {
@@ -170,7 +181,7 @@
   function boot() {
     if (S.s) {
       rpc('yom_me', { p_s: S.s }).then(function (me) {
-        S.me = me; renderApp(); loadFeed(); signVisible();
+        S.me = me; renderApp(); loadFeed(); signVisible(); refreshHandoff();
         // מיד אחרי הכניסה הראשונה מציעים לבחור תמונה. אפשר לדלג
         if (S.justJoined && !me.avatar) { S.justJoined = false; avatarSheet(true); }
       })
@@ -180,7 +191,20 @@
         });
       return;
     }
-    if (S.t) return loadRoster();
+    if (S.h) {
+      var h = S.h; S.h = null;
+      rpc('yom_handoff_use', { p_h: h }).then(function (j) { S.s = j.s; lsSet(LS_S, S.s); boot(); })
+        .catch(function (e) {
+          if (e.net) { S.h = h; renderMsg('אין חיבור כרגע', 'היומן ייטען כשתחזור הקליטה.', true); return; }
+          setUrl(location.pathname + (S.t ? '#t=' + S.t : '')); boot();
+        });
+      return;
+    }
+    if (S.t) { if (!standalone() && !/[#&]t=/.test(location.hash)) setUrl(location.pathname + '#t=' + S.t); return loadRoster(); }
+    if (standalone()) {
+      renderMsg('צריך להיכנס שוב', 'פתחו את הקישור מקבוצת הווטסאפ של המשלחת בדפדפן, ומשם הוסיפו שוב את היומן למסך הבית.');
+      return;
+    }
     renderMsg('צריך קישור כדי להיכנס', 'כדי להיכנס ליומן צריך את הקישור שנשלח בקבוצת המשלחת.');
   }
 
@@ -869,7 +893,7 @@
       $('[data-out]', d).onclick = function () {
         d.close();
         confirmSheet('לצאת מהיומן בטלפון הזה?', 'השם שלכם ישתחרר, ותוכלו להיכנס שוב מהקישור של המשלחת, מהטלפון הזה או מטלפון אחר. הפוסטים שכתבתם נשארים ביומן.', 'יציאה', false, function (done) {
-          rpc('yom_logout', { p_s: S.s }).catch(function () {}).then(function () { done(); lsDel(LS_S); lsDel('yoman-view'); S.s = null; S.me = null; S.posts = []; S.feedDraft = S.noteDraft = S.draft = null; S.view = 'feed'; boot(); });
+          rpc('yom_logout', { p_s: S.s }).catch(function () {}).then(function () { done(); lsDel(LS_S); lsDel('yoman-view'); S.s = null; S.me = null; S.posts = []; S.feedDraft = S.noteDraft = S.draft = null; S.view = 'feed'; setUrl(location.pathname + (S.t ? '#t=' + S.t : '')); boot(); });
         });
       };
     });

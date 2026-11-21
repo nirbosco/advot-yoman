@@ -1,6 +1,6 @@
 /* מטמון של קבצי האפליקציה בלבד, כדי שתיפתח מהר ותהיה ניתנת להתקנה.
    הפוסטים והתמונות לא נשמרים כאן: הם בכתובת אחרת, ונשלפים רק עם מפתח המכשיר. */
-var CACHE = 'yoman-shell-v4';
+var CACHE = 'yoman-shell-v5';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'assets/advot-logo-white.png',
   'fonts/rubik-hebrew-400-normal.woff2', 'fonts/rubik-hebrew-500-normal.woff2', 'fonts/rubik-hebrew-700-normal.woff2',
   'fonts/rubik-latin-400-normal.woff2', 'fonts/rubik-latin-500-normal.woff2', 'fonts/rubik-latin-700-normal.woff2'].concat(['adele','austen','bean','bond','bowie','chaplin','charles','churchill','cleese','dench','elton','hitchcock','mercury','potter','queen','smith','thatcher','winehouse'].map(function (n) { return 'assets/av/' + n + '.webp'; }));
