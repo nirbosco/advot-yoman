@@ -306,3 +306,4 @@ dialog::backdrop{background:rgba(10,14,30,.5)}
 .toast{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
 .toast-act{border:0;background:transparent;color:#9fb8ff;font-weight:700;min-height:36px;padding:0 4px;text-decoration:underline;text-underline-offset:3px}
 .toast[hidden]{display:none}
+.share-own{display:block;color:var(--ink-3);font-size:13px;margin-top:2px}

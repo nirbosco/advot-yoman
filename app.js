@@ -385,7 +385,7 @@
       '<div class="composer-row">' + (edit ? '' : av(S.me.name)) + '<label class="sr" for="' + d.uid + '">' + (priv ? 'טקסט הרשומה' : 'טקסט הפוסט') + '</label>' +
       '<textarea class="ed-txt" id="' + d.uid + '" rows="1" maxlength="6000" placeholder="' + (edit ? (priv ? 'טקסט הרשומה' : 'טקסט הפוסט') : (priv ? 'מה תרצו לרשום לעצמכם?' : 'מה תרצו לשתף מהיום?')) + '"' + (d.busy ? ' disabled' : '') + '>' + esc(d.text) + '</textarea></div>' +
       (att ? '<div class="att">' + att + '</div>' : '') +
-      (open && !priv ? '<label class="share-opt"><input type="checkbox" class="ed-share"' + (d.shareable ? ' checked' : '') + dis + '><span>אפשר לשתף את הפוסט הזה מחוץ לקבוצה, אחרי שניר יפתח את השיתוף בסוף המסע</span></label>' : '') +
+      (open && !priv ? '<label class="share-opt"><input type="checkbox" class="ed-share"' + (d.shareable ? ' checked' : '') + dis + '><span>לאפשר גם לאחרים במשלחת לשתף את הפוסט הזה מחוץ לקבוצה, אחרי המסע<small class="share-own">את הפוסטים שלכם אפשר לשתף בכל רגע.</small></span></label>' : '') +
       (d.err ? '<div class="err" role="alert">' + esc(d.err) + '</div>' : '') +
       (d.progress ? '<div class="progress" role="status">' + esc(d.progress) + '</div>' : '') +
       '<div class="tools">' +
@@ -598,7 +598,7 @@
     var h = '<article class="sheet post' + (p.private ? ' note' : '') + '" data-id="' + p.id + '"><div class="post-head">' + head +
       (canMenu ? '<button class="more" data-menu aria-label="' + (p.private ? 'אפשרויות לרשומה' : 'אפשרויות לפוסט') + '">' + ic('dots') + '</button>' : '') + '</div>';
     if (p.body) h += '<div class="body' + (long && !S.expanded[p.id] ? ' clip' : '') + '">' + linkify(p.body) + '</div>' + (long && !S.expanded[p.id] ? '<button class="readmore" data-readmore>להמשך הקריאה</button>' : '');
-    if (p.mine && p.shareable) h += '<span class="tag-share">' + ic('globe') + 'אישרתם שיתוף אחרי המסע</span>';
+    if (p.mine && p.shareable) h += '<span class="tag-share">' + ic('globe') + 'אישרתם לאחרים לשתף אחרי המסע</span>';
     if (imgs.length) {
       var n = imgs.length, shown = imgs.slice(0, n > 4 ? 4 : n), cls = 'g' + Math.min(n, 4);
       h += '<div class="grid ' + cls + '">' + shown.map(function (m, i) {
@@ -622,7 +622,7 @@
       h += '<div class="stats">' + (p.likes ? '<button data-likers>' + (p.likes === 1 ? 'לייק אחד' : p.likes + ' לייקים') + '</button>' : '<span></span>') +
         (nc ? '<button data-toggle-c>' + (nc === 1 ? 'תגובה אחת' : nc + ' תגובות') + '</button>' : '') + '</div>';
     }
-    var shareOk = S.me.share_open && p.shareable;
+    var shareOk = canShare(p);
     h += '<div class="acts"><button class="act' + (p.liked ? ' liked' : '') + '" data-like aria-pressed="' + p.liked + '">' + ic('heart') + 'אהבתי</button>' +
       '<button class="act" data-toggle-c aria-expanded="' + !!S.open[p.id] + '">' + ic('comment') + 'תגובה</button>' +
       (shareOk ? '<button class="act" data-share>' + ic('share') + 'שיתוף</button>' : '') + '</div>';
@@ -755,7 +755,7 @@
     var items = '', noun = p.private ? 'הרשומה' : 'הפוסט';
     if (p.mine) items += '<li><button data-edit>' + ic('pen') + 'עריכת ' + noun + '</button></li>';
     if (p.private) items += '<li><button data-pub>' + ic('send') + 'פרסום ביומן</button></li>';
-    if (p.mine && !p.private) items += '<li><button data-sh>' + ic('globe') + (p.shareable ? 'ביטול האישור לשתף אחרי המסע' : 'אישור לשתף את הפוסט אחרי המסע') + '</button></li>';
+    if (p.mine && !p.private) items += '<li><button data-sh>' + ic('globe') + (p.shareable ? 'לא לאפשר לאחרים לשתף' : 'לאפשר לאחרים לשתף אחרי המסע') + '</button></li>';
     items += '<li><button class="danger" data-del>' + ic('trash') + 'מחיקת ' + noun + (p.mine ? '' : ' (ניהול)') + '</button></li>';
     sheet('<ul class="menu">' + items + '</ul>', function (d) {
       var ed = $('[data-edit]', d); if (ed) ed.onclick = function () { d.close(); editPost(p); };
@@ -763,7 +763,7 @@
       var sh = $('[data-sh]', d);
       if (sh) sh.onclick = function () {
         d.close(); var on = !p.shareable;
-        rpc('yom_set_shareable', { p_s: S.s, p_id: p.id, p_on: on }).then(function () { p.shareable = on; replacePost(p); toast(on ? 'אפשר יהיה לשתף את הפוסט אחרי המסע, כשניר יפתח את האפשרות' : 'הפוסט יישאר רק בתוך הקבוצה'); }).catch(function (e) { fail(e); });
+        rpc('yom_set_shareable', { p_s: S.s, p_id: p.id, p_on: on }).then(function () { p.shareable = on; replacePost(p); toast(on ? 'אחרי המסע, גם אחרים במשלחת יוכלו לשתף את הפוסט' : 'רק אתם תוכלו לשתף את הפוסט'); }).catch(function (e) { fail(e); });
       };
       $('[data-del]', d).onclick = function () {
         d.close();
@@ -778,7 +778,7 @@
   // רשומה מהמחברת עוברת ליומן של כולם, כפוסט חדש מהיום
   function publishNote(p) {
     var d = sheet('<h3>לפרסם ביומן?</h3><p>הרשומה תעבור ליומן של כולם, וכל חברי המשלחת יראו אותה. היא תופיע ביומן של היום כפוסט חדש, ולא תישאר במחברת.</p>' +
-      '<label class="share-opt"><input type="checkbox" data-pubshare><span>אפשר לשתף את הפוסט הזה מחוץ לקבוצה, אחרי שניר יפתח את השיתוף בסוף המסע</span></label>' +
+      '<label class="share-opt"><input type="checkbox" data-pubshare><span>לאפשר גם לאחרים במשלחת לשתף את הפוסט הזה מחוץ לקבוצה, אחרי המסע<small class="share-own">את הפוסטים שלכם אפשר לשתף בכל רגע.</small></span></label>' +
       '<div class="btns"><button class="btn" data-no>ביטול</button><button class="btn primary" data-ok>פרסום ביומן</button></div>', function (dlg) {
       $('[data-no]', dlg).onclick = function () { dlg.close(); };
       var ok = $('[data-ok]', dlg);
@@ -903,8 +903,8 @@
     function draw(j) {
       var joined = j.members.filter(function (m) { return m.joined && !m.admin; }).length, total = j.members.filter(function (m) { return !m.admin; }).length;
       $('#adm', d).innerHTML =
-        '<label class="switch"><input type="checkbox" id="shOpen"' + (j.share_open ? ' checked' : '') + '><span><b>שיתוף מחוץ לקבוצה</b>' +
-        (j.share_open ? 'פתוח. בפוסטים שהכותבים אישרו מופיע כפתור שיתוף.' : 'סגור. אף אחד לא רואה כפתור שיתוף. כדאי לפתוח רק אחרי החזרה ארצה.') + '</span></label>' +
+        '<label class="switch"><input type="checkbox" id="shOpen"' + (j.share_open ? ' checked' : '') + '><span><b>שיתוף פוסטים של אחרים</b>' +
+        (j.share_open ? 'פתוח. אפשר לשתף גם פוסטים של אחרים, אם הכותבים אישרו.' : 'סגור. כל אחד יכול לשתף רק את הפוסטים שלו. כדאי לפתוח אחרי החזרה ארצה.') + '</span></label>' +
         '<p>' + joined + ' מתוך ' + total + ' משתתפים כבר נכנסו.</p>' +
         '<ul class="mem">' + j.members.map(function (m) {
           return '<li><span class="pill-in' + (m.joined ? ' on' : '') + '" aria-hidden="true"></span><span class="st">' + esc(m.name) + (m.admin ? ' (ניהול)' : '') +
@@ -932,7 +932,7 @@
   /* ---------- צפייה בתמונות ---------- */
   function viewer(p, idx) {
     var imgs = p.media.filter(function (m) { return m.kind === 'image'; });
-    var shareOk = S.me.share_open && p.shareable;
+    var shareOk = canShare(p);
     var d = document.createElement('dialog'); d.className = 'viewer'; d.setAttribute('aria-label', p.private ? 'תמונות מהרשומה' : 'תמונות מהפוסט של ' + p.author);
     d.innerHTML = '<div class="stage"><img alt=""><span class="loading" hidden>טוען…</span></div>' +
       '<div class="vbar"><button class="vb" data-close aria-label="סגירה">' + ic('close') + '</button><span aria-live="polite"></span>' +
@@ -959,7 +959,10 @@
     d.showModal(); show(idx);
   }
 
-  /* ---------- שיתוף החוצה (רק כשניר פתח, ורק בפוסט שהכותב אישר) ---------- */
+  /* ---------- שיתוף החוצה ----------
+     פוסט שלכם: אפשר לשתף בכל רגע (בוואטסאפ, דרך תפריט השיתוף של הטלפון).
+     פוסט של מישהו אחר: רק אחרי שניר פתח את השיתוף, ורק אם הכותב אישר. */
+  function canShare(p) { return !p.private && (p.mine || (S.me.share_open && p.shareable)); }
   function sharePost(p, btn) { shareImages(p, p.media.filter(function (m) { return m.kind === 'image'; }), btn); }
   function shareImages(p, imgs, btn) {
     var text = p.body || '';
@@ -968,18 +971,31 @@
       else toast('הדפדפן הזה לא תומך בשיתוף. נסו מהטלפון.');
       return;
     }
-    if (!imgs.length) { navigator.share({ text: text }).catch(function () {}); return; }
-    btn.disabled = true; var old = btn.innerHTML;
-    needUrls(imgs.map(function (m) { return m.path; })).then(function () {
+    // מכינים את התמונות ברקע בזמן שהחלון פתוח, כדי שהשיתוף ייפתח מיד בלחיצה (באייפון זה חייב להיות מיד אחרי לחיצה)
+    var ready = null, failed = false;
+    var prep = imgs.length ? needUrls(imgs.map(function (m) { return m.path; })).then(function () {
       return Promise.all(imgs.map(function (m, i) {
         return fetch(urlOf(m.path)).then(function (r) { return r.blob(); }).then(function (b) { return new File([b], 'yoman-' + p.id + '-' + (i + 1) + '.jpg', { type: 'image/jpeg' }); });
       }));
-    }).then(function (files) {
-      btn.disabled = false; btn.innerHTML = old;
-      var data = { files: files }; if (text) data.text = text;
-      if (navigator.canShare && !navigator.canShare(data)) { data = { files: files }; if (!navigator.canShare(data)) return navigator.share({ text: text }); }
-      return navigator.share(data);
-    }).catch(function (e) { btn.disabled = false; btn.innerHTML = old; if (e && e.name !== 'AbortError') fail(e, 'השיתוף לא הצליח. נסו שוב.'); });
+    }) : Promise.resolve([]);
+    prep.then(function (f) { ready = f; }, function () { failed = true; });
+    sheet('<h3>' + (p.mine ? 'שיתוף הפוסט שלכם' : 'שיתוף הפוסט') + '</h3>' +
+      '<p>הפוסט יישלח מהטלפון שלכם, למשל בוואטסאפ. את נתוני המיקום כבר הסרנו מהתמונות, ובכל זאת עדיף לא לכתוב בהודעה איפה אנחנו נמצאים עכשיו.</p>' +
+      '<div class="btns"><button class="btn" data-no>ביטול</button><button class="btn primary" data-ok>' + ic('share') + 'שיתוף</button></div>', function (d) {
+      $('[data-no]', d).onclick = function () { d.close(); };
+      var ok = $('[data-ok]', d);
+      ok.onclick = function () {
+        if (failed) { d.close(); fail(null, 'התמונות לא נטענו. בדקו את החיבור ונסו שוב.'); return; }
+        var go = function (files) {
+          d.close();
+          var data = files.length ? { files: files } : {}; if (text) data.text = text;
+          if (files.length && navigator.canShare && !navigator.canShare(data)) { data = { files: files }; if (!navigator.canShare(data)) data = { text: text }; }
+          navigator.share(data).catch(function (e) { if (e && e.name !== 'AbortError') fail(e, 'השיתוף לא הצליח. נסו שוב.'); });
+        };
+        if (ready) go(ready);
+        else { ok.disabled = true; ok.textContent = 'מכינים את התמונות…'; prep.then(go, function () { d.close(); fail(null, 'התמונות לא נטענו. בדקו את החיבור ונסו שוב.'); }); }
+      };
+    });
   }
 
   window.addEventListener('hashchange', function () { if (/[#&][ta]=/.test(location.hash)) { if (/[#&]a=/.test(location.hash)) { S.s = null; } start(); } });
