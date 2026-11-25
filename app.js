@@ -227,7 +227,7 @@
       '<h2>מי אתם?</h2><p class="lead">בחרו את השם שלכם ברשימה. הטלפון יזכור אתכם, ובפעם הבאה תיכנסו ישר ליומן.</p>' +
       '<label class="search">' + ic('search') + '<span class="sr">חיפוש שם</span><input id="q" type="search" autocomplete="off" placeholder="חיפוש שם" value="' + esc(q) + '"></label>' +
       '<ul class="names sheet" id="names"></ul>' +
-      '<p class="note">שם שכבר נבחר בטלפון אחר מסומן "כבר בשימוש". אם זה השם שלכם, פנו לניר והוא ישחרר אותו.</p></main>';
+      '<p class="note">נכנסתם כבר בעבר ממכשיר אחר? פשוט בחרו שוב את השם שלכם.</p></main>';
     var input = $('#q');
     input.oninput = function () { drawNames(input.value); };
     drawNames(q);
@@ -236,13 +236,15 @@
     q = (q || '').trim();
     var list = roster.filter(function (m) { return !q || m.name.indexOf(q) >= 0; });
     $('#names').innerHTML = list.length ? list.map(function (m) {
-      return '<li><button class="name" data-id="' + m.id + '"' + (m.taken ? ' disabled' : '') + '>' + av(m.name) + '<span class="nm">' + esc(m.name) + '</span>' +
-        (m.taken ? '<small>כבר בשימוש</small>' : '') + '</button></li>';
+      return '<li><button class="name" data-id="' + m.id + '">' + av(m.name) + '<span class="nm">' + esc(m.name) + '</span>' +
+        (m.taken ? '<small>כבר נכנסו בשם הזה</small>' : '') + '</button></li>';
     }).join('') : '<li class="empty">אין שם כזה ברשימה. נסו לחפש רק את השם הפרטי.</li>';
     $$('#names .name').forEach(function (b) {
       b.onclick = function () {
         var m = roster.filter(function (x) { return String(x.id) === b.getAttribute('data-id'); })[0];
-        confirmSheet('להיכנס בתור ' + m.name + '?', 'מעכשיו הפוסטים, התגובות והלייקים מהטלפון הזה יופיעו בשם הזה.', 'כן, זה אני', false, function (done) {
+        confirmSheet('להיכנס בתור ' + m.name + '?', m.taken
+          ? 'כבר נכנסו בשם הזה ממכשיר אחר. אם זה אתם, אפשר להיכנס גם מכאן, והמכשיר הקודם נשאר מחובר.'
+          : 'מעכשיו הפוסטים, התגובות והלייקים מהטלפון הזה יופיעו בשם הזה.', 'כן, זה אני', false, function (done) {
           rpc('yom_join', { p_t: S.t, p_member: m.id }).then(function (j) { done(); S.s = j.s; lsSet(LS_S, S.s); S.justJoined = true; boot(); })
             .catch(function (e) {
               done();
