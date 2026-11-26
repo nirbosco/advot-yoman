@@ -385,7 +385,7 @@
     var goLabel = (edit || priv) ? (d.busy ? 'בשמירה…' : 'שמירה') : (d.busy ? 'מתפרסם…' : 'פרסום');
     c.innerHTML =
       '<div class="composer-row">' + (edit ? '' : av(S.me.name)) + '<label class="sr" for="' + d.uid + '">' + (priv ? 'טקסט הרשומה' : 'טקסט הפוסט') + '</label>' +
-      '<textarea class="ed-txt" id="' + d.uid + '" rows="1" maxlength="6000" placeholder="' + (edit ? (priv ? 'טקסט הרשומה' : 'טקסט הפוסט') : (priv ? 'מה תרצו לרשום לעצמכם?' : 'מה תרצו לשתף מהיום?')) + '"' + (d.busy ? ' disabled' : '') + '>' + esc(d.text) + '</textarea></div>' +
+      '<textarea class="ed-txt" id="' + d.uid + '" rows="1"' + (priv ? '' : ' maxlength="6000"') + ' placeholder="' + (edit ? (priv ? 'טקסט הרשומה' : 'טקסט הפוסט') : (priv ? 'מה תרצו לרשום לעצמכם?' : 'מה תרצו לשתף מהיום?')) + '"' + (d.busy ? ' disabled' : '') + '>' + esc(d.text) + '</textarea></div>' +
       (att ? '<div class="att">' + att + '</div>' : '') +
       (open && !priv ? '<label class="share-opt"><input type="checkbox" class="ed-share"' + (d.shareable ? ' checked' : '') + dis + '><span>לאפשר גם לאחרים במשלחת לשתף את הפוסט הזה מחוץ לקבוצה, אחרי המסע<small class="share-own">את הפוסטים שלכם אפשר לשתף בכל רגע.</small></span></label>' : '') +
       (d.err ? '<div class="err" role="alert">' + esc(d.err) + '</div>' : '') +
